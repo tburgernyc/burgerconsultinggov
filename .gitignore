@@ -18,3 +18,24 @@ pgdata/
 
 # OS
 .DS_Store
+
+# SSL certificates and private keys — never commit
+nginx/certbot/conf/
+nginx/certbot/www/
+
+# Shell and system dotfiles
+.bash_history
+.bash_logout
+.bashrc
+.bash_profile
+.profile
+.ssh/
+.cache/
+.config/
+.local/
+.npm/
+.nvm/
+.docker/
+.gitconfig
+.claude.json
+.claude/
