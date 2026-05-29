@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 
 const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
@@ -63,7 +64,7 @@ export default function VendorPortalPage() {
             Timothy will review your application within 24 hours.
             You will receive an email with login credentials once approved.
           </p>
-          <a href="/" className="btn btn-navy">Return Home</a>
+          <Link href="/" className="btn btn-navy">Return Home</Link>
         </div>
       </section>
     );

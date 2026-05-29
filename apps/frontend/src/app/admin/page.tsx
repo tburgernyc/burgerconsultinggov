@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 
 const API = '/api/proxy';
 
@@ -51,7 +52,7 @@ export default function AdminDashboard() {
           <h1 style={{ fontSize: '1.5rem', color: 'var(--navy)' }}>Morning Brief</h1>
           <p style={{ color: 'var(--muted)', fontSize: '0.875rem' }}>{new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
         </div>
-        <a href="/admin/solicitations" className="btn btn-navy btn-sm">View Full Pipeline</a>
+        <Link href="/admin/solicitations" className="btn btn-navy btn-sm">View Full Pipeline</Link>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>

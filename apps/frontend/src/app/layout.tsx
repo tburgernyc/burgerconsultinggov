@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import Link from 'next/link';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -22,7 +23,7 @@ function Header() {
   return (
     <header className="site-header">
       <nav className="container">
-        <a href="/" className="logo">BURGER<span> CONSULTING</span></a>
+        <Link href="/" className="logo">BURGER<span> CONSULTING</span></Link>
         <ul className="nav-links">
           <li><a href="/capabilities">Capabilities</a></li>
           <li><a href="/vendor-portal">Vendor Portal</a></li>

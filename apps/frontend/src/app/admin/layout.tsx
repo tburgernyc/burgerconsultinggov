@@ -1,5 +1,6 @@
 import { auth } from '@/lib/auth';
 import { redirect } from 'next/navigation';
+import Link from 'next/link';
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const session = await auth();
@@ -24,7 +25,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           </a>
         ))}
         <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', padding: '1rem 1.5rem', marginTop: '2rem' }}>
-          <a href="/" style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.8rem' }}>← Public Site</a>
+          <Link href="/" style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.8rem' }}>← Public Site</Link>
         </div>
       </aside>
       <main className="portal-main">{children}</main>

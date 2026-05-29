@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 
 const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 const STEPS = ['Business Identity', 'Contact & Capacity', 'Compliance Docs', 'Terms'];
@@ -47,7 +48,7 @@ export default function VendorRegisterPage() {
         <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>✅</div>
         <h1 style={{ color: 'var(--navy)' }}>Registration Complete</h1>
         <p style={{ color: 'var(--muted)', margin: '1rem 0 1.5rem' }}>Application received. Expect login credentials within 24 hours upon approval.</p>
-        <a href="/" className="btn btn-navy">Return Home</a>
+        <Link href="/" className="btn btn-navy">Return Home</Link>
       </div></section>
     );
   }

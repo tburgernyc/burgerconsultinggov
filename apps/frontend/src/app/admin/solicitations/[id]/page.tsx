@@ -1,6 +1,7 @@
 'use client';
 
 import { use, useEffect, useState } from 'react';
+import Link from 'next/link';
 
 const API = '/api/proxy';
 
@@ -31,7 +32,7 @@ export default function SolicitationDetailPage({ params }: { params: Promise<{ i
   return (
     <div>
       <div style={{ marginBottom: '1.5rem' }}>
-        <a href="/admin/solicitations" style={{ color: 'var(--muted)', fontSize: '0.875rem' }}>← Back to Pipeline</a>
+        <Link href="/admin/solicitations" style={{ color: 'var(--muted)', fontSize: '0.875rem' }}>← Back to Pipeline</Link>
         <h1 style={{ fontSize: '1.5rem', color: 'var(--navy)', margin: '0.5rem 0' }}>{id}</h1>
       </div>
       {sol ? (

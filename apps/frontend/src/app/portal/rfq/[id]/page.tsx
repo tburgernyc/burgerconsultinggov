@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useEffect, useState } from 'react';
+import { use, useEffect, useMemo, useState } from 'react';
 import { useSession } from 'next-auth/react';
 
 const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
@@ -8,18 +8,14 @@ const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 export default function RFQPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const { data: session } = useSession();
+  const vendorId = useMemo(() => (session?.user as { id?: string })?.id ?? '', [session]);
   const [rfq, setRfq] = useState<Rfq | null>(null);
   const [submitted, setSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState({
-    vendor_id: '', total_amount: '', labor_rate_hourly: '', materials_cost: '',
+    total_amount: '', labor_rate_hourly: '', materials_cost: '',
     period_of_performance: '', pay_when_paid_confirmed: false, notes: '',
   });
-
-  useEffect(() => {
-    const vendorId = (session?.user as { id?: string })?.id;
-    if (vendorId) setForm(f => ({ ...f, vendor_id: vendorId }));
-  }, [session]);
 
   useEffect(() => {
     fetch(`${API}/api/solicitations/list`)
@@ -35,7 +31,7 @@ export default function RFQPage({ params }: { params: Promise<{ id: string }> })
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!form.vendor_id) {
+    if (!vendorId) {
       setSubmitError('Session expired — please log out and log back in.');
       return;
     }
@@ -47,7 +43,7 @@ export default function RFQPage({ params }: { params: Promise<{ id: string }> })
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           solicitation_id: id,
-          vendor_id: form.vendor_id,
+          vendor_id: vendorId,
           total_amount: parseFloat(form.total_amount),
           labor_rate_hourly: form.labor_rate_hourly ? parseFloat(form.labor_rate_hourly) : null,
           materials_cost: form.materials_cost ? parseFloat(form.materials_cost) : null,

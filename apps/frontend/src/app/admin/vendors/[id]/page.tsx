@@ -1,6 +1,7 @@
 'use client';
 
 import { use, useEffect, useState } from 'react';
+import Link from 'next/link';
 
 const API = '/api/proxy';
 
@@ -22,7 +23,7 @@ export default function VendorDetailPage({ params }: { params: Promise<{ id: str
 
   return (
     <>
-      <a href="/admin/vendors" style={{ color: 'var(--muted)', fontSize: '0.875rem' }}>← Back to Vendors</a>
+      <Link href="/admin/vendors" style={{ color: 'var(--muted)', fontSize: '0.875rem' }}>← Back to Vendors</Link>
       <h1 style={{ fontSize: '1.5rem', color: 'var(--navy)', margin: '0.5rem 0 1.5rem' }}>{vendor.legal_name}</h1>
       <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '1.5rem' }}>
         <div>
