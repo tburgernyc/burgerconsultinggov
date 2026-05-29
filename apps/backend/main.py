@@ -3,6 +3,7 @@ import json
 import tempfile
 import requests
 import psycopg2
+from psycopg2 import pool as pg_pool
 import resend
 from contextlib import asynccontextmanager
 from datetime import datetime, date, timedelta
@@ -268,14 +269,35 @@ async def cron_sam_scan() -> None:
         print(f"[CRON ERROR] SAM scan: {exc}")
 
 
-def get_db_connection():
-    return psycopg2.connect(
+_pool: "pg_pool.ThreadedConnectionPool | None" = None
+
+
+def _init_pool() -> None:
+    global _pool
+    _pool = pg_pool.ThreadedConnectionPool(
+        minconn=2,
+        maxconn=20,
         host=os.getenv("DB_HOST", "db"),
         database="postgres",
-        user="postgres",
-        password=os.getenv("POSTGRES_PASSWORD"),
-        port=5432
+        user=os.getenv("DB_USER", "postgres"),
+        password=os.getenv("DB_PASSWORD") or os.getenv("POSTGRES_PASSWORD"),
+        port=5432,
     )
+
+
+def get_db_connection():
+    conn = _pool.getconn()
+
+    def _return():
+        try:
+            if not conn.closed:
+                conn.rollback()
+        except Exception:
+            pass
+        _pool.putconn(conn)
+
+    conn.close = _return
+    return conn
 
 
 SCHEMA_SQL = """
@@ -433,8 +455,16 @@ ALTER TABLE solicitation_queue ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ D
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    _init_pool()
     try:
-        conn = get_db_connection()
+        # Schema migration runs as superuser; hermes_user lacks CREATE TABLE privilege
+        conn = psycopg2.connect(
+            host=os.getenv("DB_HOST", "db"),
+            database="postgres",
+            user="postgres",
+            password=os.getenv("POSTGRES_PASSWORD"),
+            port=5432,
+        )
         cur = conn.cursor()
         for statement in SCHEMA_SQL.strip().split(';'):
             stmt = statement.strip()
@@ -465,6 +495,7 @@ async def lifespan(app: FastAPI):
     yield
 
     scheduler.shutdown()
+    _pool.closeall()
 
 
 # ──────────────── Pydantic Models ────────────────
@@ -566,8 +597,8 @@ app = FastAPI(title="Hermes Cognitive Engine — Burger Consulting LLC", lifespa
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
+    allow_origins=["https://www.burgergov.com", "https://burgergov.com"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 
@@ -1072,7 +1103,7 @@ async def award_contract(request: ContractAwardRequest, _: None = Depends(_requi
 
 
 @app.post("/api/contracts/{contract_id}/invoice")
-async def submit_invoice(contract_id: str, request: InvoiceRequest):
+async def submit_invoice(contract_id: str, request: InvoiceRequest, _: None = Depends(_require_admin)):
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute("""
