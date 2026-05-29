@@ -44,6 +44,7 @@ services:
       DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@db:5432/postgres
       NEXTAUTH_URL: ${NEXTAUTH_URL}
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+      AUTH_TRUST_HOST: "true"
     expose:
       - "3000"
     depends_on:
