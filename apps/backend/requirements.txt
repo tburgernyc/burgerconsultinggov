@@ -4,3 +4,8 @@ pydantic
 psycopg2-binary
 requests
 google-genai
+python-dotenv
+httpx
+resend
+apscheduler>=3.10.0
+passlib[bcrypt]
