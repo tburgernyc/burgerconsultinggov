@@ -69,6 +69,22 @@ services:
     networks:
       - hermes_net
 
+  certbot-renew:
+    image: docker:27-cli
+    container_name: certbot_cron
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./nginx/certbot/conf:/etc/letsencrypt
+      - ./nginx/certbot/www:/var/www/certbot
+    entrypoint: >
+      sh -c "echo '0 3 1,15 * * docker run --rm
+      -v /home/t_burgernyc/nginx/certbot/conf:/etc/letsencrypt
+      -v /home/t_burgernyc/nginx/certbot/www:/var/www/certbot
+      certbot/certbot renew --quiet --webroot -w /var/www/certbot
+      && docker restart hermes_nginx' | crontab -
+      && crond -f -l 8"
+
 networks:
   hermes_net:
     driver: bridge
