@@ -60,12 +60,12 @@ log "Containers stopped"
 
 # ── 5. Rebuild backend image ───────────────────────────────
 log "Step 5/8 — Rebuilding backend (installs any new dependencies)..."
-docker compose build hermes_backend 2>&1 | tee -a "$LOGFILE"
+docker compose build backend 2>&1 | tee -a "$LOGFILE"
 log "Backend image built"
 
 # ── 6. Rebuild frontend image ──────────────────────────────
 log "Step 6/8 — Rebuilding frontend (compiles TypeScript + Next.js)..."
-docker compose build burger_frontend 2>&1 | tee -a "$LOGFILE"
+docker compose build frontend 2>&1 | tee -a "$LOGFILE"
 log "Frontend image built"
 
 # ── 7. Start all services ──────────────────────────────────
@@ -77,13 +77,16 @@ log "Services started — waiting for health checks..."
 HEALTH_OK=false
 for i in $(seq 1 24); do
   sleep 5
-  STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/health 2>/dev/null || echo "000")
+  # Test via docker exec since port 8000 is internal-only (traffic routes through Nginx)
+  STATUS=$(docker exec hermes_backend python3 -c \
+    "import urllib.request; urllib.request.urlopen('http://localhost:8000/health'); print('200')" \
+    2>/dev/null || echo "000")
   if [ "$STATUS" = "200" ]; then
     HEALTH_OK=true
     log "  Backend health check PASSED (attempt $i)"
     break
   fi
-  log "  Attempt $i/24 — backend returned HTTP $STATUS, retrying..."
+  log "  Attempt $i/24 — backend not ready yet (attempt $i), retrying..."
 done
 
 if [ "$HEALTH_OK" = false ]; then
@@ -92,7 +95,7 @@ if [ "$HEALTH_OK" = false ]; then
   docker logs hermes_backend --tail 50 2>&1 | tee -a "$LOGFILE"
   log "--- Attempting rollback ---"
   cp "${BACKUP_DIR}/main.py.bak" "${WORKDIR}/apps/backend/main.py" 2>/dev/null || true
-  docker compose build hermes_backend 2>&1 | tee -a "$LOGFILE"
+  docker compose build backend 2>&1 | tee -a "$LOGFILE"
   docker compose up -d 2>&1 | tee -a "$LOGFILE"
   fail "Deployment failed — rolled back to previous backend. Check $LOGFILE"
 fi

@@ -680,19 +680,35 @@ def _init_pool() -> None:
     )
 
 
-def get_db_connection():
-    conn = _pool.getconn()
+class _PooledConn:
+    """Wraps a psycopg2 connection and returns it to the pool on close()."""
+    def __init__(self, conn):
+        self._conn = conn
 
-    def _return():
+    def cursor(self):
+        return self._conn.cursor()
+
+    def commit(self):
+        return self._conn.commit()
+
+    def rollback(self):
+        return self._conn.rollback()
+
+    def close(self):
         try:
-            if not conn.closed:
-                conn.rollback()
+            if not self._conn.closed:
+                self._conn.rollback()
         except Exception:
             pass
-        _pool.putconn(conn)
+        _pool.putconn(self._conn)
 
-    conn.close = _return
-    return conn
+    @property
+    def closed(self):
+        return self._conn.closed
+
+
+def get_db_connection() -> "_PooledConn":
+    return _PooledConn(_pool.getconn())
 
 
 SCHEMA_SQL = """
