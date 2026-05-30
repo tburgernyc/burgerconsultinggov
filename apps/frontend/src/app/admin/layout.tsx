@@ -18,6 +18,8 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           { href: '/admin/approvals', label: 'Approvals', icon: '✅' },
           { href: '/admin/vendors', label: 'Vendors', icon: '🤝' },
           { href: '/admin/contracts', label: 'Contracts', icon: '📄' },
+          { href: '/admin/proposals', label: 'Proposals', icon: '✨' },
+          { href: '/admin/intelligence', label: 'Intelligence', icon: '🔍' },
           { href: '/admin/financials', label: 'Financials', icon: '💰' },
         ].map(l => (
           <a key={l.href} href={l.href} className="portal-sidebar nav-item">

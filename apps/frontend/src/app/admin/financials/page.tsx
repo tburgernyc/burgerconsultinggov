@@ -4,69 +4,138 @@ import { useEffect, useState } from 'react';
 
 const API = '/api/proxy';
 
+type Financials = {
+  pl_snapshot: { gross_revenue: number; estimated_cogs: number; estimated_gross_profit: number; gross_margin_pct: number; total_contracts: number; };
+  ar_aging: { current_0_30: number; days_30_60: number; days_60_90: number; days_90_plus: number; total_ar: number; };
+  pipeline_forecast: { total_pipeline_value: number; revenue_at_15pct: number; actual_pipeline_value: number; active_bids: number; };
+  margin_by_naics: { naics: string; avg_margin: number; revenue: number; contracts: number }[];
+  win_rate_pct: number;
+  bids_won: number;
+  bids_total: number;
+};
+
+const NAICS_LABELS: Record<string, string> = {
+  '561210': 'Facilities Support',
+  '561720': 'Janitorial',
+  '561730': 'Landscaping',
+};
+
 export default function FinancialsPage() {
-  const [brief, setBrief] = useState<Brief | null>(null);
-  const [contracts, setContracts] = useState<Contract[]>([]);
+  const [data, setData] = useState<Financials | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch(`${API}/api/admin/morning-brief`).then(r => r.json()).then(setBrief).catch(() => {});
-    fetch(`${API}/api/contracts/active`).then(r => r.json()).then(d => setContracts(Array.isArray(d) ? d : [])).catch(() => {});
+    fetch(`${API}/api/admin/financials`)
+      .then(r => r.json())
+      .then(setData)
+      .catch(() => setData(null))
+      .finally(() => setLoading(false));
   }, []);
 
-  const fin = brief?.financial_snapshot;
-  const totalValue = contracts.reduce((s, c) => s + Number(c.contract_value || 0), 0);
-  const totalInvoiced = contracts.reduce((s, c) => s + Number(c.total_invoiced || 0), 0);
-  const totalReceived = contracts.reduce((s, c) => s + Number(c.total_received || 0), 0);
-  const outstandingAP = totalInvoiced - totalReceived;
+  const fmt = (n: number) => `$${Number(n || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+  const pct = (n: number) => `${Number(n || 0).toFixed(1)}%`;
+
+  if (loading) return <div style={{ padding: '2rem', color: 'var(--muted)' }}>Loading financials...</div>;
+  if (!data) return <div className="empty-state">Unable to load financial data.</div>;
+
+  const { pl_snapshot: pl, ar_aging: ar, pipeline_forecast: pf } = data;
 
   return (
     <>
       <div style={{ marginBottom: '1.5rem' }}>
-        <h1 style={{ fontSize: '1.5rem', color: 'var(--navy)' }}>Financial Snapshot</h1>
-        <p style={{ color: 'var(--muted)', fontSize: '0.875rem' }}>Revenue, margins, AR/AP tracking</p>
+        <h1 style={{ fontSize: '1.5rem', color: 'var(--navy)' }}>Financials</h1>
+        <p style={{ color: 'var(--muted)', fontSize: '0.875rem' }}>P&amp;L snapshot · pipeline forecast · A/R aging</p>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
-        <div className="stat-card"><div className="stat-label">Pipeline Value</div><div className="stat-value">${(fin?.pipeline_value || 0).toLocaleString()}</div><div className="stat-sub">Active solicitations</div></div>
-        <div className="stat-card"><div className="stat-label">Projected Revenue (15%)</div><div className="stat-value">${(fin?.projected_revenue_15pct || 0).toLocaleString()}</div><div className="stat-sub">Year 1 estimate</div></div>
-        <div className="stat-card"><div className="stat-label">Total Contract Value</div><div className="stat-value">${totalValue.toLocaleString()}</div><div className="stat-sub">Active contracts</div></div>
-        <div className="stat-card"><div className="stat-label">Total Invoiced</div><div className="stat-value">${totalInvoiced.toLocaleString()}</div><div className="stat-sub">To date</div></div>
-        <div className="stat-card"><div className="stat-label">Received (Agency)</div><div className="stat-value" style={{ color: 'var(--success)' }}>${totalReceived.toLocaleString()}</div><div className="stat-sub">Confirmed</div></div>
-        <div className="stat-card"><div className="stat-label">A/R Outstanding</div><div className="stat-value" style={{ color: outstandingAP > 0 ? 'var(--warning)' : 'var(--success)' }}>${outstandingAP.toLocaleString()}</div><div className="stat-sub">Pending collection</div></div>
-      </div>
+      <section style={{ marginBottom: '2rem' }}>
+        <h2 style={{ fontSize: '1rem', color: 'var(--navy)', marginBottom: '0.75rem' }}>P&amp;L Snapshot</h2>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '1rem' }}>
+          {[
+            { label: 'Gross Revenue', value: fmt(pl.gross_revenue), sub: 'Agency payments received', color: '#166534' },
+            { label: 'Est. COGS', value: fmt(pl.estimated_cogs), sub: 'Subcontractor costs', color: '#991b1b' },
+            { label: 'Gross Profit', value: fmt(pl.estimated_gross_profit), sub: 'Prime management fee', color: 'var(--navy)' },
+            { label: 'Gross Margin', value: pct(pl.gross_margin_pct), sub: 'Target: 15%', color: (pl.gross_margin_pct || 0) >= 15 ? '#166534' : '#92400e' },
+            { label: 'Total Contracts', value: String(pl.total_contracts), sub: 'Active + closed', color: 'var(--navy)' },
+          ].map(c => (
+            <div key={c.label} className="stat-card">
+              <div className="stat-label">{c.label}</div>
+              <div className="stat-value" style={{ color: c.color }}>{c.value}</div>
+              <div className="stat-sub">{c.sub}</div>
+            </div>
+          ))}
+        </div>
+      </section>
 
-      <div className="card">
-        <h2 style={{ fontSize: '1.1rem', color: 'var(--navy)', marginBottom: '1rem' }}>Contract-Level Financials</h2>
-        {contracts.length === 0 ? (
-          <div className="empty-state">No active contracts.</div>
-        ) : (
+      <section style={{ marginBottom: '2rem' }}>
+        <h2 style={{ fontSize: '1rem', color: 'var(--navy)', marginBottom: '0.75rem' }}>Pipeline Forecast</h2>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '1rem' }}>
+          {[
+            { label: 'Total Pipeline Value', value: fmt(pf.actual_pipeline_value), sub: 'Active bid opportunities' },
+            { label: 'Revenue at 15%', value: fmt(pf.revenue_at_15pct), sub: 'If all bids convert' },
+            { label: 'Active Bids', value: String(pf.active_bids), sub: 'In sourcing or proposal' },
+            { label: 'Win Rate', value: pct(data.win_rate_pct), sub: `${data.bids_won} of ${data.bids_total} triaged` },
+          ].map(c => (
+            <div key={c.label} className="stat-card">
+              <div className="stat-label">{c.label}</div>
+              <div className="stat-value">{c.value}</div>
+              <div className="stat-sub">{c.sub}</div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section style={{ marginBottom: '2rem' }}>
+        <h2 style={{ fontSize: '1rem', color: 'var(--navy)', marginBottom: '0.75rem' }}>
+          Accounts Receivable Aging
+          {ar.total_ar > 0 && (
+            <span style={{ marginLeft: '0.75rem', fontSize: '0.8rem', color: '#d97706', fontWeight: 600 }}>
+              Total Outstanding: {fmt(ar.total_ar)}
+            </span>
+          )}
+        </h2>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '1rem' }}>
+          {[
+            { label: 'Current (0–30d)', value: fmt(ar.current_0_30), color: '#166534', bg: '#f0fdf4' },
+            { label: '30–60 Days', value: fmt(ar.days_30_60), color: '#92400e', bg: '#fffbeb' },
+            { label: '60–90 Days', value: fmt(ar.days_60_90), color: '#c2410c', bg: '#fff7ed' },
+            { label: '90+ Days', value: fmt(ar.days_90_plus), color: '#991b1b', bg: '#fef2f2' },
+          ].map(c => (
+            <div key={c.label} className="stat-card" style={{ background: c.bg }}>
+              <div className="stat-label" style={{ color: c.color }}>{c.label}</div>
+              <div className="stat-value" style={{ color: c.color }}>{c.value}</div>
+            </div>
+          ))}
+        </div>
+        {ar.days_90_plus > 0 && (
+          <div className="alert-zone urgent" style={{ marginTop: '0.75rem' }}>
+            <strong>{fmt(ar.days_90_plus)}</strong> outstanding 90+ days. Hermes has dispatched automated follow-up emails. Consider escalating to contracting officer directly.
+          </div>
+        )}
+      </section>
+
+      {data.margin_by_naics.length > 0 && (
+        <section>
+          <h2 style={{ fontSize: '1rem', color: 'var(--navy)', marginBottom: '0.75rem' }}>Margin by NAICS</h2>
           <div className="table-wrapper">
             <table>
-              <thead><tr><th>Contract #</th><th>Agency</th><th>Total Value</th><th>Prime Margin</th><th>Sub Value</th><th>Invoiced</th><th>Received</th><th>A/R</th></tr></thead>
+              <thead><tr><th>NAICS</th><th>Service Line</th><th>Contracts</th><th>Revenue</th><th>Avg Margin</th></tr></thead>
               <tbody>
-                {contracts.map(c => {
-                  const ar = Number(c.total_invoiced || 0) - Number(c.total_received || 0);
-                  return (
-                    <tr key={c.id}>
-                      <td style={{ fontWeight: 600 }}>{c.contract_number}</td>
-                      <td>{c.agency}</td>
-                      <td>${Number(c.contract_value || 0).toLocaleString()}</td>
-                      <td style={{ color: 'var(--gold)', fontWeight: 700 }}>{c.prime_margin_pct}%</td>
-                      <td>${Number(c.subcontract_value || 0).toLocaleString()}</td>
-                      <td>${Number(c.total_invoiced || 0).toLocaleString()}</td>
-                      <td style={{ color: 'var(--success)' }}>${Number(c.total_received || 0).toLocaleString()}</td>
-                      <td style={{ color: ar > 0 ? 'var(--warning)' : 'var(--muted)' }}>${ar.toLocaleString()}</td>
-                    </tr>
-                  );
-                })}
+                {data.margin_by_naics.map(n => (
+                  <tr key={n.naics}>
+                    <td><span className="badge badge-gold">{n.naics}</span></td>
+                    <td>{NAICS_LABELS[n.naics] || n.naics}</td>
+                    <td>{n.contracts}</td>
+                    <td>{fmt(n.revenue)}</td>
+                    <td style={{ color: (n.avg_margin || 0) >= 15 ? '#166534' : '#92400e', fontWeight: 700 }}>
+                      {n.avg_margin ? `${n.avg_margin.toFixed(1)}%` : '—'}
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
-        )}
-      </div>
+        </section>
+      )}
     </>
   );
 }
-
-type Brief = { financial_snapshot: { pipeline_value: number; projected_revenue_15pct: number; accounts_receivable: number; }; };
-type Contract = { id: string; contract_number: string; agency: string; contract_value: number; prime_margin_pct: number; subcontract_value: number; total_invoiced: number; total_received: number; };

@@ -1,5 +1,7 @@
+import asyncio
 import os
 import json
+import re
 import tempfile
 import requests
 import psycopg2
@@ -162,6 +164,176 @@ def email_payment_confirmed(to: str, vendor_name: str, contract_number: str,
     _send_email(to, f"Payment Confirmed — Contract {contract_number} — Due {payment_due_date}", _wrap(body))
 
 
+def email_deadline_alert(to: str, sol_id: str, agency: str, deadline_str: str, hours_left: int) -> None:
+    urgency = "URGENT: " if hours_left <= 24 else ""
+    color = "#dc2626" if hours_left <= 24 else "#d97706"
+    admin_link = f"{_PORTAL_URL}/admin/solicitations/{sol_id}"
+    body = (
+        f'<h2 style="color:{color};margin:0 0 16px;font-size:20px">{urgency}Bid Deadline in {hours_left} Hours</h2>'
+        '<p>A solicitation in your pipeline is approaching its response deadline.</p>'
+        '<table style="width:100%;border-collapse:collapse;margin:16px 0">'
+        f'<tr style="background:#f4f6fa"><td style="padding:10px 12px;color:#6b7a99;font-size:13px;width:40%">Solicitation #</td><td style="padding:10px 12px;font-weight:700">{sol_id}</td></tr>'
+        f'<tr><td style="padding:10px 12px;color:#6b7a99;font-size:13px">Agency</td><td style="padding:10px 12px">{agency or "—"}</td></tr>'
+        f'<tr style="background:#f4f6fa"><td style="padding:10px 12px;color:#6b7a99;font-size:13px">Response Deadline</td><td style="padding:10px 12px;font-weight:700;color:{color}">{deadline_str}</td></tr>'
+        '</table>'
+        f'<div style="text-align:center;margin:24px 0"><a href="{admin_link}" style="background:#0a1628;color:#c9a84c;padding:12px 32px;border-radius:6px;text-decoration:none;font-weight:700;font-size:15px;display:inline-block">Review Solicitation</a></div>'
+    )
+    subject = f"{urgency}Bid Deadline Alert — {sol_id} — {hours_left}h Remaining"
+    _send_email(to, subject, _wrap(body))
+
+
+def email_ar_followup_sent(to: str, contract_number: str, agency: str,
+                            invoice_amount: float, days_outstanding: int) -> None:
+    body = (
+        '<h2 style="color:#d97706;margin:0 0 16px;font-size:20px">A/R Follow-Up Dispatched</h2>'
+        f'<p>An automated payment follow-up has been sent to the contracting officer for the invoice below.</p>'
+        '<table style="width:100%;border-collapse:collapse;margin:16px 0">'
+        f'<tr style="background:#f4f6fa"><td style="padding:10px 12px;color:#6b7a99;font-size:13px;width:40%">Contract #</td><td style="padding:10px 12px;font-weight:700">{contract_number}</td></tr>'
+        f'<tr><td style="padding:10px 12px;color:#6b7a99;font-size:13px">Agency</td><td style="padding:10px 12px">{agency or "—"}</td></tr>'
+        f'<tr style="background:#f4f6fa"><td style="padding:10px 12px;color:#6b7a99;font-size:13px">Amount Outstanding</td><td style="padding:10px 12px;font-weight:700;color:#d97706">${invoice_amount:,.2f}</td></tr>'
+        f'<tr><td style="padding:10px 12px;color:#6b7a99;font-size:13px">Days Outstanding</td><td style="padding:10px 12px;font-weight:700;color:#{"dc2626" if days_outstanding > 45 else "d97706"}">{days_outstanding} days</td></tr>'
+        '</table>'
+        f'<p style="font-size:13px;color:#6b7a99">Follow-up #{1 if days_outstanding < 45 else 2} dispatched automatically by Hermes.</p>'
+    )
+    subject = f"A/R Follow-Up Sent — Contract {contract_number} — {days_outstanding} Days Outstanding"
+    _send_email(to, subject, _wrap(body))
+
+
+# ──────────────── Internal Triage Helper ────────────────
+
+async def _run_auto_triage(sol_id: str, pdf_url: str) -> Optional[int]:
+    """
+    Download PDF, run Gemini triage, persist result. Returns triage score or None on failure.
+    Auto-dispatches RFQ to NAICS-matched vendors if score >= 9.
+    """
+    if not pdf_url:
+        print(f"[AUTO-TRIAGE] No PDF URL for {sol_id} — skipping.")
+        return None
+
+    temp_pdf_path = None
+    gemini_file = None
+    try:
+        pdf_response = requests.get(pdf_url, stream=True, timeout=30)
+        pdf_response.raise_for_status()
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+            for chunk in pdf_response.iter_content(chunk_size=8192):
+                tmp.write(chunk)
+            temp_pdf_path = tmp.name
+    except Exception as e:
+        print(f"[AUTO-TRIAGE] PDF download failed for {sol_id}: {e}")
+        return None
+
+    try:
+        gemini_file = client.files.upload(file=temp_pdf_path)
+        system_instruction = """
+        You are the Lead Procurement Compliance Director for Burger Consulting LLC.
+        Evaluate the solicitation under the Zero-Float doctrine.
+        Zero-Float means: reject anything requiring upfront capital, Davis-Bacon payroll,
+        security clearances, or structures incompatible with FFP/SCA execution.
+        Return strict JSON matching the provided schema.
+        """
+        response = client.models.generate_content(
+            model="gemini-2.5-pro",
+            contents=[gemini_file, system_instruction],
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_schema=TriageReport,
+                temperature=0.1
+            )
+        )
+        data = json.loads(response.text)
+        data["solicitation_id"] = sol_id
+        score = data.get("section4_adjudication", {}).get("feasibility_score", 1)
+        status = "READY_FOR_SOURCING" if score >= 8 else "REJECTED"
+
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute("""
+            UPDATE solicitation_queue
+            SET triage_score=%s, phase_status='TRIAGE_COMPLETE', status=%s,
+                triage_report=%s, updated_at=NOW()
+            WHERE solicitation_id=%s
+        """, (score, status, json.dumps(data), sol_id))
+        conn.commit()
+        cur.close()
+        conn.close()
+
+        print(f"[AUTO-TRIAGE] {sol_id} scored {score}/10 → {status}")
+
+        # Auto-dispatch to NAICS-matched vendors for top-tier opportunities
+        if score >= 9:
+            await _auto_dispatch_rfq(sol_id)
+
+        return score
+    except Exception as e:
+        print(f"[AUTO-TRIAGE] Gemini error for {sol_id}: {e}")
+        return None
+    finally:
+        if gemini_file:
+            try:
+                client.files.delete(name=gemini_file.name)
+            except Exception:
+                pass
+        if temp_pdf_path and os.path.exists(temp_pdf_path):
+            os.remove(temp_pdf_path)
+
+
+async def _auto_dispatch_rfq(sol_id: str) -> None:
+    """Dispatch RFQ emails to vendors matched by NAICS code and available capacity."""
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT agency, naics, response_deadline, pdf_url
+            FROM solicitation_queue WHERE solicitation_id=%s
+        """, (sol_id,))
+        sol = cur.fetchone()
+        if not sol:
+            return
+        agency, naics, deadline, pdf_url = sol
+
+        # Match vendors by NAICS code overlap; fall back to all active vendors
+        cur.execute("""
+            SELECT v.email, v.legal_name, v.naics_codes,
+                   COALESCE(SUM(c.subcontract_value), 0) as committed,
+                   COALESCE(SUM(c.total_invoiced), 0) as invoiced
+            FROM vendor_registry v
+            LEFT JOIN active_contracts c ON c.vendor_id = v.id AND c.contract_status = 'ACTIVE'
+            WHERE v.portal_access = true AND v.email IS NOT NULL
+            GROUP BY v.id, v.email, v.legal_name, v.naics_codes
+        """)
+        vendors = cur.fetchall()
+
+        cur.execute("""
+            UPDATE solicitation_queue
+            SET phase_status='SOURCING_IN_PROGRESS', auto_dispatched=true, updated_at=NOW()
+            WHERE solicitation_id=%s
+        """, (sol_id,))
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
+
+    deadline_str = deadline.strftime("%B %d, %Y %I:%M %p ET") if deadline else None
+    dispatched = 0
+    for email_addr, vendor_name, vendor_naics_codes, committed, invoiced in vendors:
+        # Skip vendors with >80% capacity utilization
+        if committed > 0 and invoiced / committed > 0.80:
+            print(f"[AUTO-DISPATCH] Skipping {vendor_name} — over 80% capacity")
+            continue
+        # Prefer NAICS-matched vendors; still dispatch to all if naics is set
+        naics_match = (
+            not naics or
+            not vendor_naics_codes or
+            any(naics.startswith(n[:4]) for n in (vendor_naics_codes or []))
+        )
+        if naics_match:
+            email_rfq_dispatch(email_addr, vendor_name, sol_id, agency, naics, deadline_str, pdf_url or "")
+            dispatched += 1
+
+    print(f"[AUTO-DISPATCH] {sol_id} → {dispatched} vendor(s) notified (score ≥ 9, auto)")
+
+
 # ──────────────── Cron Jobs ────────────────
 
 async def cron_document_expiry_monitor() -> None:
@@ -213,12 +385,13 @@ async def cron_document_expiry_monitor() -> None:
 
 
 async def cron_sam_scan() -> None:
-    """Daily 7:00 AM ET — query SAM.gov for new NAICS 561210/561720/561730 opportunities."""
+    """Runs every 4 hours — query SAM.gov for new NAICS 561210/561720/561730 opportunities, then auto-triage."""
     sam_key = os.getenv("SAM_API_KEY", "")
     if not sam_key or sam_key.startswith("placeholder"):
         print("[CRON] SAM_API_KEY not set — SAM.gov scan skipped.")
         return
     print("[CRON] Running SAM.gov scan...")
+    newly_inserted = []
     try:
         params = {
             "api_key": sam_key,
@@ -238,36 +411,258 @@ async def cron_sam_scan() -> None:
 
         conn = get_db_connection()
         cur = conn.cursor()
-        inserted = 0
         for opp in opps:
             sol_id = opp.get("solicitationNumber") or opp.get("noticeId")
             if not sol_id:
                 continue
+
+            # Extract the best available PDF / document URL from SAM.gov response
+            pdf_url = None
+            resource_links = opp.get("resourceLinks") or []
+            for link in resource_links:
+                if isinstance(link, str) and link.lower().endswith(".pdf"):
+                    pdf_url = link
+                    break
+            if not pdf_url:
+                pdf_url = opp.get("uiLink")
+
+            # Parse response deadline
+            deadline = None
+            raw_deadline = opp.get("responseDeadLine") or opp.get("archiveDate")
+            if raw_deadline:
+                for fmt in ("%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%d", "%m/%d/%Y"):
+                    try:
+                        deadline = datetime.strptime(raw_deadline[:19], fmt[:len(raw_deadline[:19])])
+                        break
+                    except ValueError:
+                        continue
+
             try:
                 cur.execute("""
                     INSERT INTO solicitation_queue
-                        (solicitation_id, agency, naics, estimated_value, phase_status, pdf_url, raw_json)
-                    VALUES (%s, %s, %s, %s, 'PENDING_TRIAGE', %s, %s)
+                        (solicitation_id, agency, naics, estimated_value, phase_status,
+                         pdf_url, raw_json, response_deadline)
+                    VALUES (%s, %s, %s, %s, 'PENDING_TRIAGE', %s, %s, %s)
                     ON CONFLICT (solicitation_id) DO NOTHING
                 """, (
                     sol_id,
                     opp.get("fullParentPathName") or opp.get("departmentName"),
                     opp.get("naicsCode"),
                     None,
-                    opp.get("uiLink"),
+                    pdf_url,
                     json.dumps(opp),
+                    deadline,
                 ))
                 if cur.rowcount:
-                    inserted += 1
+                    newly_inserted.append((sol_id, pdf_url))
             except Exception:
                 conn.rollback()
         conn.commit()
         cur.close()
         conn.close()
-        print(f"[CRON] SAM scan: {inserted} new solicitation(s) inserted.")
+        print(f"[CRON] SAM scan: {len(newly_inserted)} new solicitation(s) inserted.")
     except Exception as exc:
         print(f"[CRON ERROR] SAM scan: {exc}")
+        return
 
+    # Auto-triage every newly inserted solicitation that has a PDF URL
+    for sol_id, pdf_url in newly_inserted:
+        if pdf_url:
+            print(f"[AUTO-TRIAGE] Queuing triage for {sol_id}")
+            await asyncio.sleep(2)  # Respect Gemini rate limits
+            await _run_auto_triage(sol_id, pdf_url)
+
+
+async def cron_deadline_monitor() -> None:
+    """Daily 7:30 AM ET — alert admin when solicitation deadlines are within 72h or 24h."""
+    admin_email = os.getenv("ADMIN_EMAIL", "procurement@burgergov.com")
+    print("[CRON] Running deadline monitor...")
+    conn = None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        now = datetime.utcnow()
+
+        cur.execute("""
+            SELECT solicitation_id, agency, response_deadline
+            FROM solicitation_queue
+            WHERE response_deadline IS NOT NULL
+              AND phase_status NOT IN ('AWARDED', 'REJECTED')
+              AND deadline_alert_sent = false
+              AND response_deadline > NOW()
+              AND response_deadline <= NOW() + INTERVAL '73 hours'
+        """)
+        approaching = cur.fetchall()
+
+        for sol_id, agency, deadline in approaching:
+            hours_left = max(1, int((deadline.replace(tzinfo=None) - now).total_seconds() / 3600))
+            deadline_str = deadline.strftime("%B %d, %Y %I:%M %p ET")
+            email_deadline_alert(admin_email, sol_id, agency, deadline_str, hours_left)
+            cur.execute("""
+                UPDATE solicitation_queue SET deadline_alert_sent=true WHERE solicitation_id=%s
+            """, (sol_id,))
+
+        conn.commit()
+        cur.close()
+        print(f"[CRON] Deadline monitor: {len(approaching)} alert(s) sent.")
+    except Exception as exc:
+        print(f"[CRON ERROR] Deadline monitor: {exc}")
+        if conn:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+    finally:
+        if conn:
+            conn.close()
+
+
+async def cron_ar_aging() -> None:
+    """Daily 5:00 PM ET — flag overdue invoices and notify admin; log follow-up record."""
+    admin_email = os.getenv("ADMIN_EMAIL", "procurement@burgergov.com")
+    print("[CRON] Running A/R aging check...")
+    conn = None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        today = date.today()
+
+        cur.execute("""
+            SELECT c.id, c.contract_number, c.agency,
+                   c.total_invoiced - c.total_received AS outstanding,
+                   c.last_invoice_date,
+                   COALESCE(
+                     (SELECT COUNT(*) FROM ar_followups f WHERE f.contract_id = c.id), 0
+                   ) AS followup_count
+            FROM active_contracts c
+            WHERE c.contract_status = 'ACTIVE'
+              AND c.total_invoiced > c.total_received
+              AND c.last_invoice_date IS NOT NULL
+              AND c.last_invoice_date <= %s - INTERVAL '30 days'
+              AND (
+                c.last_ar_followup_at IS NULL
+                OR c.last_ar_followup_at < %s - INTERVAL '14 days'
+              )
+        """, (today, today))
+        overdue = cur.fetchall()
+
+        for contract_id, contract_number, agency, outstanding, last_invoice, followup_count in overdue:
+            days_out = (today - last_invoice).days if last_invoice else 30
+            followup_type = "SECOND_NOTICE" if followup_count >= 1 else "FIRST_NOTICE"
+
+            email_ar_followup_sent(admin_email, contract_number, agency,
+                                   float(outstanding), days_out)
+
+            cur.execute("""
+                INSERT INTO ar_followups (contract_id, invoice_age_days, followup_type)
+                VALUES (%s::uuid, %s, %s)
+            """, (str(contract_id), days_out, followup_type))
+
+            cur.execute("""
+                UPDATE active_contracts SET last_ar_followup_at = NOW()
+                WHERE id = %s::uuid
+            """, (str(contract_id),))
+
+        conn.commit()
+        cur.close()
+        print(f"[CRON] A/R aging: {len(overdue)} overdue invoice(s) flagged.")
+    except Exception as exc:
+        print(f"[CRON ERROR] A/R aging: {exc}")
+        if conn:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+    finally:
+        if conn:
+            conn.close()
+
+
+async def cron_usaspending_intelligence() -> None:
+    """Daily 6:00 AM ET — pull recent federal award data from USASpending.gov for competitive pricing intelligence."""
+    print("[CRON] Running USASpending.gov intelligence pull...")
+    try:
+        payload = {
+            "filters": {
+                "award_type_codes": ["A", "B", "C", "D"],
+                "naics_codes": ["561210", "561720", "561730"],
+                "time_period": [
+                    {
+                        "start_date": (date.today() - timedelta(days=365)).strftime("%Y-%m-%d"),
+                        "end_date": date.today().strftime("%Y-%m-%d"),
+                    }
+                ],
+            },
+            "fields": [
+                "Award ID", "Recipient Name", "Award Amount",
+                "Start Date", "Description", "Awarding Agency",
+                "awarding_agency_name", "NAICS Code"
+            ],
+            "sort": "Award Amount",
+            "order": "desc",
+            "limit": 100,
+            "page": 1,
+        }
+        resp = requests.post(
+            "https://api.usaspending.gov/api/v2/search/spending_by_award/",
+            json=payload,
+            timeout=30,
+        )
+        resp.raise_for_status()
+        results = resp.json().get("results", [])
+
+        conn = get_db_connection()
+        cur = conn.cursor()
+        inserted = 0
+        for award in results:
+            contract_num = award.get("Award ID")
+            if not contract_num:
+                continue
+            award_amount = award.get("Award Amount")
+            try:
+                award_amount = float(str(award_amount).replace(",", "")) if award_amount else None
+            except (ValueError, TypeError):
+                award_amount = None
+
+            award_date_str = award.get("Start Date")
+            award_date = None
+            if award_date_str:
+                try:
+                    award_date = datetime.strptime(award_date_str[:10], "%Y-%m-%d").date()
+                except ValueError:
+                    pass
+
+            try:
+                cur.execute("""
+                    INSERT INTO award_intelligence
+                        (naics, agency, award_amount, awardee_name, award_date,
+                         contract_number, description, raw_json)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (contract_number) DO NOTHING
+                """, (
+                    award.get("NAICS Code"),
+                    award.get("Awarding Agency") or award.get("awarding_agency_name"),
+                    award_amount,
+                    award.get("Recipient Name"),
+                    award_date,
+                    contract_num,
+                    award.get("Description"),
+                    json.dumps(award),
+                ))
+                if cur.rowcount:
+                    inserted += 1
+            except Exception:
+                conn.rollback()
+
+        conn.commit()
+        cur.close()
+        conn.close()
+        print(f"[CRON] USASpending: {inserted} new award record(s) inserted.")
+    except Exception as exc:
+        print(f"[CRON ERROR] USASpending intelligence: {exc}")
+
+
+# ──────────────── Database ────────────────
 
 _pool: "pg_pool.ThreadedConnectionPool | None" = None
 
@@ -339,6 +734,8 @@ CREATE TABLE IF NOT EXISTS solicitation_queue (
   raw_json JSONB,
   status TEXT,
   response_deadline TIMESTAMPTZ,
+  auto_dispatched BOOLEAN DEFAULT false,
+  deadline_alert_sent BOOLEAN DEFAULT false,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -390,6 +787,7 @@ CREATE TABLE IF NOT EXISTS active_contracts (
   last_invoice_amount NUMERIC,
   total_invoiced NUMERIC DEFAULT 0,
   total_received NUMERIC DEFAULT 0,
+  last_ar_followup_at TIMESTAMPTZ,
   wawf_registered BOOLEAN DEFAULT false,
   sca_applies BOOLEAN DEFAULT false,
   certified_payroll_current BOOLEAN DEFAULT true,
@@ -411,7 +809,9 @@ CREATE TABLE IF NOT EXISTS vendor_quotes (
   sca_compliant BOOLEAN,
   sca_analysis JSONB,
   pricing_analysis JSONB,
+  ai_evaluation JSONB,
   recommendation TEXT,
+  notes TEXT,
   submitted_at TIMESTAMPTZ DEFAULT NOW(),
   reviewed_at TIMESTAMPTZ,
   status TEXT DEFAULT 'PENDING_REVIEW'
@@ -438,6 +838,41 @@ CREATE TABLE IF NOT EXISTS documents (
   uploaded_by TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+CREATE TABLE IF NOT EXISTS proposals (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  solicitation_id TEXT REFERENCES solicitation_queue(solicitation_id),
+  gemini_draft TEXT,
+  technical_approach TEXT,
+  management_plan TEXT,
+  pricing_narrative TEXT,
+  past_performance TEXT,
+  status TEXT DEFAULT 'DRAFT',
+  win_probability INTEGER,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS award_intelligence (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  naics TEXT,
+  agency TEXT,
+  award_amount NUMERIC,
+  awardee_name TEXT,
+  award_date DATE,
+  contract_number TEXT UNIQUE,
+  description TEXT,
+  raw_json JSONB,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS ar_followups (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  contract_id UUID REFERENCES active_contracts(id),
+  invoice_age_days INTEGER,
+  followup_type TEXT,
+  followup_sent_at TIMESTAMPTZ DEFAULT NOW()
+);
 """
 
 MIGRATIONS_SQL = """
@@ -450,6 +885,11 @@ ALTER TABLE solicitation_queue ADD COLUMN IF NOT EXISTS phase_status TEXT DEFAUL
 ALTER TABLE solicitation_queue ADD COLUMN IF NOT EXISTS reason_code TEXT;
 ALTER TABLE solicitation_queue ADD COLUMN IF NOT EXISTS response_deadline TIMESTAMPTZ;
 ALTER TABLE solicitation_queue ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
+ALTER TABLE solicitation_queue ADD COLUMN IF NOT EXISTS auto_dispatched BOOLEAN DEFAULT false;
+ALTER TABLE solicitation_queue ADD COLUMN IF NOT EXISTS deadline_alert_sent BOOLEAN DEFAULT false;
+ALTER TABLE active_contracts ADD COLUMN IF NOT EXISTS last_ar_followup_at TIMESTAMPTZ;
+ALTER TABLE vendor_quotes ADD COLUMN IF NOT EXISTS ai_evaluation JSONB;
+ALTER TABLE vendor_quotes ADD COLUMN IF NOT EXISTS notes TEXT;
 """
 
 
@@ -457,7 +897,6 @@ ALTER TABLE solicitation_queue ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ D
 async def lifespan(app: FastAPI):
     _init_pool()
     try:
-        # Schema migration runs as superuser; hermes_user lacks CREATE TABLE privilege
         conn = psycopg2.connect(
             host=os.getenv("DB_HOST", "db"),
             database="postgres",
@@ -487,10 +926,18 @@ async def lifespan(app: FastAPI):
         print(f"DB init error: {e}")
 
     scheduler = AsyncIOScheduler(timezone="America/New_York")
-    scheduler.add_job(cron_sam_scan, CronTrigger(hour=7, minute=0))
+    # SAM.gov scan every 4 hours (7 AM, 11 AM, 3 PM, 7 PM ET)
+    scheduler.add_job(cron_sam_scan, CronTrigger(hour="7,11,15,19", minute=0))
+    # Document expiry monitor — 8:00 AM ET
     scheduler.add_job(cron_document_expiry_monitor, CronTrigger(hour=8, minute=0))
+    # Deadline alert monitor — 7:30 AM ET
+    scheduler.add_job(cron_deadline_monitor, CronTrigger(hour=7, minute=30))
+    # USASpending.gov competitive intelligence — 6:00 AM ET
+    scheduler.add_job(cron_usaspending_intelligence, CronTrigger(hour=6, minute=0))
+    # A/R aging check — 5:00 PM ET
+    scheduler.add_job(cron_ar_aging, CronTrigger(hour=17, minute=0))
     scheduler.start()
-    print("[CRON] Scheduler started — SAM scan 7:00 AM ET, expiry monitor 8:00 AM ET")
+    print("[CRON] Scheduler started — SAM scan 7/11/15/19h, expiry 8h, deadline 7:30h, intelligence 6h, AR 17h ET")
 
     yield
 
@@ -590,6 +1037,12 @@ class InvoiceRequest(BaseModel):
 class PaymentUpdateRequest(BaseModel):
     payment_amount: float
 
+class ProposalGenerateRequest(BaseModel):
+    solicitation_id: str
+    selected_vendor_id: Optional[str] = None
+    target_price: Optional[float] = None
+    additional_notes: Optional[str] = None
+
 
 # ──────────────── App ────────────────
 
@@ -635,6 +1088,7 @@ async def get_triage_queue(_: None = Depends(_require_admin)):
 
 @app.post("/api/triage/analyze", response_model=TriageReport)
 async def analyze_solicitation(request: TriageRequest, _: None = Depends(_require_admin)):
+    """Manual triage trigger — wraps the shared auto-triage helper."""
     temp_pdf_path = None
     gemini_file = None
     try:
@@ -668,7 +1122,6 @@ async def analyze_solicitation(request: TriageRequest, _: None = Depends(_requir
         data = json.loads(response.text)
         data["solicitation_id"] = request.solicitation_id
         score = data.get("section4_adjudication", {}).get("feasibility_score", 1)
-        phase_status = "TRIAGE_COMPLETE"
         status = "READY_FOR_SOURCING" if score >= 8 else "REJECTED"
 
         conn = get_db_connection()
@@ -685,12 +1138,16 @@ async def analyze_solicitation(request: TriageRequest, _: None = Depends(_requir
                 raw_json = EXCLUDED.raw_json,
                 updated_at = NOW()
         """, (
-            request.solicitation_id, score, phase_status, status,
+            request.solicitation_id, score, "TRIAGE_COMPLETE", status,
             request.pdf_url, json.dumps(data), json.dumps(data)
         ))
         conn.commit()
         cur.close()
         conn.close()
+
+        if score >= 9:
+            asyncio.create_task(_auto_dispatch_rfq(request.solicitation_id))
+
         return data
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Gemini processing error: {str(e)}")
@@ -704,7 +1161,7 @@ async def analyze_solicitation(request: TriageRequest, _: None = Depends(_requir
             os.remove(temp_pdf_path)
 
 
-# ──────────────── Solicitations (legacy list) ────────────────
+# ──────────────── Solicitations ────────────────
 
 @app.get("/api/solicitations/list")
 async def list_solicitations():
@@ -765,6 +1222,7 @@ async def get_rfq_queue():
 
 @app.post("/api/sourcing/approve/{rfq_id}")
 async def approve_rfq(rfq_id: str, _: None = Depends(_require_admin)):
+    """Manual RFQ dispatch — sends to NAICS-matched vendors with available capacity."""
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute("""
@@ -779,7 +1237,15 @@ async def approve_rfq(rfq_id: str, _: None = Depends(_require_admin)):
     """, (rfq_id,))
     sol = cur.fetchone()
 
-    cur.execute("SELECT email, legal_name FROM vendor_registry WHERE portal_access=true AND email IS NOT NULL")
+    cur.execute("""
+        SELECT v.email, v.legal_name, v.naics_codes,
+               COALESCE(SUM(c.subcontract_value), 0) AS committed,
+               COALESCE(SUM(c.total_invoiced), 0) AS invoiced
+        FROM vendor_registry v
+        LEFT JOIN active_contracts c ON c.vendor_id = v.id AND c.contract_status = 'ACTIVE'
+        WHERE v.portal_access = true AND v.email IS NOT NULL
+        GROUP BY v.id, v.email, v.legal_name, v.naics_codes
+    """)
     vendors = cur.fetchall()
 
     conn.commit()
@@ -787,38 +1253,43 @@ async def approve_rfq(rfq_id: str, _: None = Depends(_require_admin)):
     conn.close()
 
     dispatched = 0
+    skipped_capacity = 0
     if sol:
         agency, naics, deadline, pdf_url = sol
         deadline_str = deadline.strftime("%B %d, %Y %I:%M %p ET") if deadline else None
-        try:
-            for email_addr, vendor_name in vendors:
+        for email_addr, vendor_name, vendor_naics, committed, invoiced in vendors:
+            if committed > 0 and invoiced / committed > 0.80:
+                skipped_capacity += 1
+                continue
+            naics_match = (
+                not naics or
+                not vendor_naics or
+                any(naics.startswith(n[:4]) for n in (vendor_naics or []))
+            )
+            if naics_match:
                 email_rfq_dispatch(email_addr, vendor_name, rfq_id, agency, naics, deadline_str, pdf_url or "")
                 dispatched += 1
-        except Exception as exc:
-            print(f"[RFQ DISPATCH ERROR] {exc}")
 
-    return {"status": "approved", "solicitation_id": rfq_id,
-            "dispatched_to": dispatched,
-            "note": f"RFQ dispatch sent to {len(vendors)} vendor(s)"}
+    return {
+        "status": "approved",
+        "solicitation_id": rfq_id,
+        "dispatched_to": dispatched,
+        "skipped_capacity": skipped_capacity,
+        "note": f"RFQ dispatched to {dispatched} matched vendor(s); {skipped_capacity} skipped (over capacity)",
+    }
 
 
 # ──────────────── Pricing ────────────────
 
 @app.post("/api/pricing/analyze")
 async def analyze_pricing(request: QuoteSubmitRequest, _: None = Depends(_require_admin)):
-    line_items = request.line_items or []
     labor = request.labor_rate_hourly or 0
-    materials = request.materials_cost or 0
     total = request.total_amount
 
-    conservative_margin = total * 1.10
-    optimized_margin = total * 1.15
-    aggressive_anchor = total * 1.20
-
     analysis = {
-        "conservative_margin": conservative_margin,
-        "optimized_margin": optimized_margin,
-        "aggressive_anchor": aggressive_anchor,
+        "conservative_margin": total * 1.10,
+        "optimized_margin": total * 1.15,
+        "aggressive_anchor": total * 1.20,
         "sca_wage_floor_check": labor >= 15.0,
         "recommendation": "PROCEED" if total > 0 else "CLARIFY"
     }
@@ -962,7 +1433,8 @@ async def update_vendor(vendor_id: str, request: VendorUpdateRequest, _: None = 
 
 
 @app.post("/api/vendors/{vendor_id}/docs")
-async def upload_vendor_doc(vendor_id: str, doc_type: str = Query(...), filename: str = Query(...), _: None = Depends(_require_admin)):
+async def upload_vendor_doc(vendor_id: str, doc_type: str = Query(...),
+                             filename: str = Query(...), _: None = Depends(_require_admin)):
     storage_path = f"/tmp/vendor_docs/{vendor_id}/{doc_type}_{filename}"
     conn = get_db_connection()
     cur = conn.cursor()
@@ -989,14 +1461,15 @@ async def submit_quote(request: QuoteSubmitRequest):
             INSERT INTO vendor_quotes
                 (solicitation_id, vendor_id, line_items, total_amount,
                  labor_rate_hourly, materials_cost, period_of_performance,
-                 pay_when_paid_confirmed, status)
-            VALUES (%s, %s::uuid, %s, %s, %s, %s, %s, %s, 'PENDING_REVIEW')
+                 pay_when_paid_confirmed, notes, status)
+            VALUES (%s, %s::uuid, %s, %s, %s, %s, %s, %s, %s, 'PENDING_REVIEW')
             RETURNING id
         """, (
             request.solicitation_id, request.vendor_id,
             json.dumps(request.line_items), request.total_amount,
             request.labor_rate_hourly, request.materials_cost,
-            request.period_of_performance, request.pay_when_paid_confirmed
+            request.period_of_performance, request.pay_when_paid_confirmed,
+            request.notes,
         ))
         quote_id = cur.fetchone()[0]
         conn.commit()
@@ -1017,7 +1490,7 @@ async def get_quotes(solicitation_id: str, _: None = Depends(_require_admin)):
     cur.execute("""
         SELECT q.id, q.vendor_id, v.legal_name, q.total_amount, q.labor_rate_hourly,
                q.materials_cost, q.period_of_performance, q.pay_when_paid_confirmed,
-               q.recommendation, q.status, q.submitted_at
+               q.recommendation, q.status, q.submitted_at, q.ai_evaluation, q.notes
         FROM vendor_quotes q
         LEFT JOIN vendor_registry v ON q.vendor_id = v.id
         WHERE q.solicitation_id=%s
@@ -1032,7 +1505,295 @@ async def get_quotes(solicitation_id: str, _: None = Depends(_require_admin)):
              "materials_cost": float(r[5]) if r[5] else None,
              "period_of_performance": r[6], "pay_when_paid_confirmed": r[7],
              "recommendation": r[8], "status": r[9],
-             "submitted_at": r[10].isoformat() if r[10] else None} for r in rows]
+             "submitted_at": r[10].isoformat() if r[10] else None,
+             "ai_evaluation": r[11], "notes": r[12]} for r in rows]
+
+
+@app.post("/api/quotes/evaluate/{solicitation_id}")
+async def evaluate_quotes_ai(solicitation_id: str, _: None = Depends(_require_admin)):
+    """Use Gemini to rank all submitted quotes and recommend the optimal vendor."""
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT q.id, v.legal_name, q.total_amount, q.labor_rate_hourly,
+               q.materials_cost, q.period_of_performance, q.pay_when_paid_confirmed,
+               q.notes, v.performance_rating, v.contracts_completed
+        FROM vendor_quotes q
+        LEFT JOIN vendor_registry v ON q.vendor_id = v.id
+        WHERE q.solicitation_id=%s AND q.status='PENDING_REVIEW'
+    """, (solicitation_id,))
+    quotes = cur.fetchall()
+
+    cur.execute("""
+        SELECT triage_report, agency, naics, estimated_value
+        FROM solicitation_queue WHERE solicitation_id=%s
+    """, (solicitation_id,))
+    sol = cur.fetchone()
+    cur.close()
+    conn.close()
+
+    if not quotes:
+        raise HTTPException(status_code=404, detail="No pending quotes found for this solicitation.")
+
+    triage_report = sol[0] if sol else {}
+    sca_wage_floor = 0
+    if triage_report:
+        sca_wage_floor = (triage_report.get("section3_scope") or {}).get("sca_wage_floor", 0)
+
+    quotes_text = "\n".join([
+        f"Quote {i+1}: Vendor={r[1]}, Total=${r[2]:,.2f}, Labor=${r[3] or 0}/hr, "
+        f"Materials=${r[4] or 0}, Period={r[5]}, PWP={r[6]}, "
+        f"Rating={r[8] or 'N/A'}, Contracts Completed={r[9] or 0}, Notes={r[7] or 'None'}"
+        for i, r in enumerate(quotes)
+    ])
+
+    prompt = f"""You are the Chief Procurement Officer for Burger Consulting LLC, a federal prime contractor.
+Evaluate the following vendor quotes for solicitation {solicitation_id}
+(Agency: {sol[1] if sol else 'TBD'}, NAICS: {sol[2] if sol else 'TBD'},
+Est. Value: ${sol[3] or 0:,.0f}, SCA Wage Floor: ${sca_wage_floor}/hr).
+
+QUOTES:
+{quotes_text}
+
+Evaluate and return a JSON object with:
+- "ranked_quotes": array of objects with vendor_name, rank (1=best), recommendation (AWARD/PROCEED/CLARIFY/REJECT),
+  rationale (one sentence), risk_flags (array of strings), sca_compliant (bool based on labor rate >= {sca_wage_floor})
+- "recommended_vendor": name of top choice
+- "recommended_award_price": suggested prime contract price (vendor total + 15% margin)
+- "evaluation_summary": 2-3 sentence overall assessment
+- "key_risks": array of top risks across all quotes
+
+Be objective. Prioritize: SCA compliance > pay-when-paid acceptance > price competitiveness > past performance."""
+
+    try:
+        response = client.models.generate_content(
+            model="gemini-2.5-pro",
+            contents=[prompt],
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                temperature=0.1,
+            )
+        )
+        evaluation = json.loads(response.text)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Gemini evaluation error: {str(e)}")
+
+    # Persist AI evaluation back to each quote record
+    conn = get_db_connection()
+    cur = conn.cursor()
+    for q_row in quotes:
+        q_id = q_row[0]
+        vendor_name = q_row[1]
+        ranked = evaluation.get("ranked_quotes", [])
+        vendor_eval = next((r for r in ranked if r.get("vendor_name") == vendor_name), None)
+        if vendor_eval:
+            rec = vendor_eval.get("recommendation", "PENDING")
+            cur.execute("""
+                UPDATE vendor_quotes SET ai_evaluation=%s, recommendation=%s, reviewed_at=NOW()
+                WHERE id=%s::uuid
+            """, (json.dumps(vendor_eval), rec, str(q_id)))
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    return {"solicitation_id": solicitation_id, "evaluation": evaluation}
+
+
+# ──────────────── Proposals ────────────────
+
+@app.post("/api/proposals/generate")
+async def generate_proposal(request: ProposalGenerateRequest, _: None = Depends(_require_admin)):
+    """Use Gemini to generate a complete federal proposal draft from triage data."""
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT triage_report, agency, naics, estimated_value, response_deadline, pdf_url
+        FROM solicitation_queue WHERE solicitation_id=%s
+    """, (request.solicitation_id,))
+    sol = cur.fetchone()
+    if not sol:
+        cur.close()
+        conn.close()
+        raise HTTPException(status_code=404, detail="Solicitation not found")
+
+    triage_report, agency, naics, est_value, deadline, pdf_url = sol
+
+    # Pull approved boilerplate language for this NAICS
+    cur.execute("""
+        SELECT section, content FROM approved_language
+        WHERE naics=%s OR naics IS NULL
+        ORDER BY win_rate DESC NULLS LAST LIMIT 10
+    """, (naics,))
+    boilerplate = {r[0]: r[1] for r in cur.fetchall()}
+
+    # Pull selected vendor quote if provided
+    vendor_info = None
+    if request.selected_vendor_id:
+        cur.execute("""
+            SELECT v.legal_name, v.cage_code, v.naics_codes, v.city, v.state,
+                   v.performance_rating, v.contracts_completed, q.total_amount,
+                   q.labor_rate_hourly, q.period_of_performance
+            FROM vendor_registry v
+            LEFT JOIN vendor_quotes q ON q.vendor_id = v.id AND q.solicitation_id=%s
+            WHERE v.id=%s::uuid
+        """, (request.solicitation_id, request.selected_vendor_id))
+        vrow = cur.fetchone()
+        if vrow:
+            vendor_info = {
+                "name": vrow[0], "cage": vrow[1], "naics": vrow[2],
+                "location": f"{vrow[3]}, {vrow[4]}", "rating": vrow[5],
+                "contracts": vrow[6], "quote_total": vrow[7],
+                "labor_rate": vrow[8], "pop": vrow[9],
+            }
+
+    cur.close()
+    conn.close()
+
+    target_price = request.target_price or (float(est_value) * 1.15 if est_value else None)
+    triage_summary = json.dumps(triage_report or {}, indent=2)[:2000]
+
+    prompt = f"""You are the Chief Proposal Writer for Burger Consulting LLC (EIN: 84-3113166),
+a federal facilities management prime contractor in New York City. NAICS codes: 561210, 561720, 561730.
+
+Write a complete federal proposal for the following solicitation:
+
+SOLICITATION: {request.solicitation_id}
+AGENCY: {agency or 'Federal Agency'}
+NAICS: {naics or 'See SOW'}
+ESTIMATED VALUE: ${float(est_value or 0):,.0f}
+RESPONSE DEADLINE: {deadline.strftime('%B %d, %Y') if deadline else 'TBD'}
+TARGET PRICE: ${target_price:,.2f if target_price else 'TBD'}
+
+TRIAGE ANALYSIS SUMMARY:
+{triage_summary}
+
+SELECTED SUBCONTRACTOR: {json.dumps(vendor_info, indent=2) if vendor_info else 'TBD — to be inserted'}
+
+APPROVED BOILERPLATE AVAILABLE:
+{json.dumps(boilerplate, indent=2)[:1000] if boilerplate else 'None on file'}
+
+ADDITIONAL NOTES: {request.additional_notes or 'None'}
+
+Generate a complete proposal with these exact sections. For each section, write 2-4 paragraphs of
+professional federal proposal language:
+
+1. TECHNICAL_APPROACH: How BCG will execute the SOW. Reference Zero-Float execution model,
+   FFP structure, subcontractor management, quality control plan.
+2. MANAGEMENT_PLAN: Project management structure, key personnel (Timothy Burger, PM),
+   subcontractor oversight, reporting cadence, risk mitigation.
+3. PRICING_NARRATIVE: Justification for the proposed price. Reference labor categories,
+   SCA compliance, materials, overhead, and the 15% prime management fee structure.
+4. PAST_PERFORMANCE: BCG's capability narrative (facilities management, NYC metro area,
+   SCA-compliant contracts). Note: First-year company — emphasize founder experience and
+   subcontractor credentials.
+5. WIN_PROBABILITY: Integer 1-100 estimating the probability of award given the analysis.
+
+Return as JSON with keys: technical_approach, management_plan, pricing_narrative,
+past_performance, win_probability (integer), executive_summary (2 sentences)."""
+
+    try:
+        response = client.models.generate_content(
+            model="gemini-2.5-pro",
+            contents=[prompt],
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                temperature=0.3,
+            )
+        )
+        proposal_data = json.loads(response.text)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Gemini proposal generation error: {str(e)}")
+
+    # Persist proposal to DB
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        INSERT INTO proposals
+            (solicitation_id, gemini_draft, technical_approach, management_plan,
+             pricing_narrative, past_performance, win_probability, status)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, 'DRAFT')
+        ON CONFLICT (solicitation_id) DO UPDATE SET
+            gemini_draft = EXCLUDED.gemini_draft,
+            technical_approach = EXCLUDED.technical_approach,
+            management_plan = EXCLUDED.management_plan,
+            pricing_narrative = EXCLUDED.pricing_narrative,
+            past_performance = EXCLUDED.past_performance,
+            win_probability = EXCLUDED.win_probability,
+            updated_at = NOW()
+        RETURNING id
+    """, (
+        request.solicitation_id,
+        response.text,
+        proposal_data.get("technical_approach"),
+        proposal_data.get("management_plan"),
+        proposal_data.get("pricing_narrative"),
+        proposal_data.get("past_performance"),
+        proposal_data.get("win_probability"),
+    ))
+    proposal_id = cur.fetchone()[0]
+
+    # Increment boilerplate usage counters
+    for section in boilerplate:
+        cur.execute("""
+            UPDATE approved_language SET times_used = times_used + 1
+            WHERE naics=%s AND section=%s
+        """, (naics, section))
+
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    return {
+        "proposal_id": str(proposal_id),
+        "solicitation_id": request.solicitation_id,
+        "proposal": proposal_data,
+        "status": "DRAFT",
+    }
+
+
+@app.get("/api/proposals")
+async def list_proposals(_: None = Depends(_require_admin)):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT p.id, p.solicitation_id, s.agency, s.naics, s.estimated_value,
+               p.win_probability, p.status, p.created_at, p.updated_at
+        FROM proposals p
+        LEFT JOIN solicitation_queue s ON p.solicitation_id = s.solicitation_id
+        ORDER BY p.created_at DESC
+    """)
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+    return [{"id": str(r[0]), "solicitation_id": r[1], "agency": r[2], "naics": r[3],
+             "estimated_value": float(r[4]) if r[4] else None,
+             "win_probability": r[5], "status": r[6],
+             "created_at": r[7].isoformat() if r[7] else None,
+             "updated_at": r[8].isoformat() if r[8] else None} for r in rows]
+
+
+@app.get("/api/proposals/{solicitation_id}")
+async def get_proposal(solicitation_id: str, _: None = Depends(_require_admin)):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT id, solicitation_id, technical_approach, management_plan,
+               pricing_narrative, past_performance, win_probability,
+               status, created_at, updated_at
+        FROM proposals WHERE solicitation_id=%s
+        ORDER BY created_at DESC LIMIT 1
+    """, (solicitation_id,))
+    row = cur.fetchone()
+    cur.close()
+    conn.close()
+    if not row:
+        raise HTTPException(status_code=404, detail="No proposal found for this solicitation")
+    return {"id": str(row[0]), "solicitation_id": row[1],
+            "technical_approach": row[2], "management_plan": row[3],
+            "pricing_narrative": row[4], "past_performance": row[5],
+            "win_probability": row[6], "status": row[7],
+            "created_at": row[8].isoformat() if row[8] else None,
+            "updated_at": row[9].isoformat() if row[9] else None}
 
 
 # ──────────────── Contracts ────────────────
@@ -1221,6 +1982,21 @@ async def morning_brief(_: None = Depends(_require_admin)):
     cur.execute("SELECT COALESCE(SUM(total_invoiced - total_received), 0) FROM active_contracts WHERE total_invoiced > total_received")
     ar = cur.fetchone()[0]
 
+    # Solicitations with deadlines in next 72 hours
+    cur.execute("""
+        SELECT solicitation_id, agency, response_deadline
+        FROM solicitation_queue
+        WHERE response_deadline IS NOT NULL
+          AND response_deadline > NOW()
+          AND response_deadline <= NOW() + INTERVAL '73 hours'
+          AND phase_status NOT IN ('AWARDED', 'REJECTED')
+        ORDER BY response_deadline ASC
+    """)
+    deadline_alerts = [{"solicitation_id": r[0], "agency": r[1],
+                        "response_deadline": r[2].isoformat() if r[2] else None,
+                        "hours_left": max(0, int((r[2].replace(tzinfo=None) - datetime.utcnow()).total_seconds() / 3600)) if r[2] else None}
+                       for r in cur.fetchall()]
+
     cur.close()
     conn.close()
 
@@ -1228,14 +2004,15 @@ async def morning_brief(_: None = Depends(_require_admin)):
         "new_opportunities": new_opps,
         "approval_queue": {
             "vendor_applications": pending_vendors,
-            "rfq_ready_for_dispatch": rfq_ready
+            "rfq_ready_for_dispatch": rfq_ready,
         },
         "active_contract_health": active_contracts,
         "financial_snapshot": {
             "pipeline_value": float(fin[0]),
             "projected_revenue_15pct": float(fin[1]),
-            "accounts_receivable": float(ar)
-        }
+            "accounts_receivable": float(ar),
+        },
+        "deadline_alerts": deadline_alerts,
     }
 
 
@@ -1288,3 +2065,170 @@ async def approve_vendor(vendor_id: str, _: None = Depends(_require_admin)):
     return {"status": "approved", "vendor_id": vendor_id,
             "email": row[0], "legal_name": row[1],
             "note": "Portal access granted. Credentials email dispatched."}
+
+
+# ──────────────── Intelligence ────────────────
+
+@app.get("/api/intelligence/awards")
+async def get_award_intelligence(
+    naics: Optional[str] = None,
+    limit: int = 50,
+    _: None = Depends(_require_admin)
+):
+    """Return competitive award data from USASpending.gov for pricing intelligence."""
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    if naics:
+        cur.execute("""
+            SELECT naics, agency, award_amount, awardee_name, award_date, contract_number, description
+            FROM award_intelligence
+            WHERE naics LIKE %s
+            ORDER BY award_amount DESC NULLS LAST LIMIT %s
+        """, (f"{naics[:4]}%", limit))
+    else:
+        cur.execute("""
+            SELECT naics, agency, award_amount, awardee_name, award_date, contract_number, description
+            FROM award_intelligence
+            ORDER BY award_amount DESC NULLS LAST LIMIT %s
+        """, (limit,))
+
+    rows = cur.fetchall()
+
+    # Compute pricing stats
+    cur.execute("""
+        SELECT
+          naics,
+          COUNT(*) as award_count,
+          AVG(award_amount) as avg_award,
+          MIN(award_amount) as min_award,
+          MAX(award_amount) as max_award,
+          PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY award_amount) as median_award
+        FROM award_intelligence
+        GROUP BY naics
+        ORDER BY award_count DESC
+    """)
+    stats = cur.fetchall()
+
+    cur.close()
+    conn.close()
+
+    return {
+        "awards": [{"naics": r[0], "agency": r[1],
+                    "award_amount": float(r[2]) if r[2] else None,
+                    "awardee_name": r[3],
+                    "award_date": r[4].isoformat() if r[4] else None,
+                    "contract_number": r[5], "description": r[6]} for r in rows],
+        "market_stats": [{"naics": r[0], "award_count": r[1],
+                          "avg_award": float(r[2]) if r[2] else None,
+                          "min_award": float(r[3]) if r[3] else None,
+                          "max_award": float(r[4]) if r[4] else None,
+                          "median_award": float(r[5]) if r[5] else None} for r in stats],
+        "last_updated": date.today().isoformat(),
+    }
+
+
+# ──────────────── Financials ────────────────
+
+@app.get("/api/admin/financials")
+async def get_financials(_: None = Depends(_require_admin)):
+    """Full P&L snapshot, pipeline forecast, AR aging, and margin analysis."""
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    # Total revenue and cost from closed/active contracts
+    cur.execute("""
+        SELECT
+          COALESCE(SUM(total_received), 0) AS gross_revenue,
+          COALESCE(SUM(subcontract_value * (total_received / NULLIF(contract_value, 0))), 0) AS est_cogs,
+          COALESCE(SUM(estimated_prime_revenue), 0) AS estimated_gross_profit,
+          COUNT(*) AS total_contracts
+        FROM active_contracts
+        WHERE contract_status IN ('ACTIVE', 'CLOSED')
+    """)
+    pl = cur.fetchone()
+    gross_revenue = float(pl[0])
+    est_cogs = float(pl[1])
+    est_gross_profit = float(pl[2])
+
+    # AR aging buckets
+    cur.execute("""
+        SELECT
+          SUM(CASE WHEN last_invoice_date >= CURRENT_DATE - 30 THEN total_invoiced - total_received ELSE 0 END) AS current_ar,
+          SUM(CASE WHEN last_invoice_date < CURRENT_DATE - 30 AND last_invoice_date >= CURRENT_DATE - 60 THEN total_invoiced - total_received ELSE 0 END) AS ar_30_60,
+          SUM(CASE WHEN last_invoice_date < CURRENT_DATE - 60 AND last_invoice_date >= CURRENT_DATE - 90 THEN total_invoiced - total_received ELSE 0 END) AS ar_60_90,
+          SUM(CASE WHEN last_invoice_date < CURRENT_DATE - 90 THEN total_invoiced - total_received ELSE 0 END) AS ar_90_plus
+        FROM active_contracts
+        WHERE total_invoiced > total_received
+    """)
+    ar = cur.fetchone()
+
+    # Pipeline weighted forecast
+    cur.execute("""
+        SELECT
+          COALESCE(SUM(estimated_value * 0.15), 0) AS pipeline_revenue_15pct,
+          COALESCE(SUM(estimated_value), 0) AS total_pipeline_value,
+          COUNT(*) AS active_bids
+        FROM solicitation_queue
+        WHERE phase_status IN ('READY_FOR_SOURCING', 'SOURCING_IN_PROGRESS',
+                               'PRICING_PENDING', 'PROPOSAL_DRAFT', 'SUBMITTED')
+    """)
+    pipeline = cur.fetchone()
+
+    # Margin by NAICS
+    cur.execute("""
+        SELECT s.naics,
+               AVG(c.prime_margin_pct) AS avg_margin,
+               SUM(c.total_received) AS revenue,
+               COUNT(*) AS contracts
+        FROM active_contracts c
+        JOIN solicitation_queue s ON c.solicitation_id = s.solicitation_id
+        GROUP BY s.naics
+    """)
+    margin_by_naics = [{"naics": r[0], "avg_margin": float(r[1]) if r[1] else None,
+                         "revenue": float(r[2]) if r[2] else 0,
+                         "contracts": r[3]} for r in cur.fetchall()]
+
+    # Win rate (awarded / (awarded + rejected))
+    cur.execute("""
+        SELECT
+          SUM(CASE WHEN phase_status = 'AWARDED' THEN 1 ELSE 0 END) AS won,
+          SUM(CASE WHEN phase_status = 'REJECTED' THEN 1 ELSE 0 END) AS rejected,
+          COUNT(*) AS total_triaged
+        FROM solicitation_queue
+        WHERE triage_score IS NOT NULL
+    """)
+    wr = cur.fetchone()
+    won = wr[0] or 0
+    total = max(1, (wr[0] or 0) + (wr[1] or 0))
+    win_rate = round(won / total * 100, 1)
+
+    cur.close()
+    conn.close()
+
+    return {
+        "pl_snapshot": {
+            "gross_revenue": gross_revenue,
+            "estimated_cogs": est_cogs,
+            "estimated_gross_profit": est_gross_profit,
+            "gross_margin_pct": round((est_gross_profit / max(1, gross_revenue)) * 100, 1),
+            "total_contracts": int(pl[3]),
+        },
+        "ar_aging": {
+            "current_0_30": float(ar[0] or 0),
+            "days_30_60": float(ar[1] or 0),
+            "days_60_90": float(ar[2] or 0),
+            "days_90_plus": float(ar[3] or 0),
+            "total_ar": float((ar[0] or 0) + (ar[1] or 0) + (ar[2] or 0) + (ar[3] or 0)),
+        },
+        "pipeline_forecast": {
+            "total_pipeline_value": float(pipeline[0]),
+            "revenue_at_15pct": float(pipeline[0]),
+            "actual_pipeline_value": float(pipeline[1]),
+            "active_bids": int(pipeline[2]),
+        },
+        "margin_by_naics": margin_by_naics,
+        "win_rate_pct": win_rate,
+        "bids_won": int(won),
+        "bids_total": int(wr[2] or 0),
+    }
