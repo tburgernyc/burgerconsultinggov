@@ -13,16 +13,16 @@ const STEPS = [
 ];
 
 const NAICS_OPTIONS = [
-  { code: '561210', label: 'Facilities Support Services' },
-  { code: '561720', label: 'Janitorial Services' },
-  { code: '561730', label: 'Landscaping Services' },
+  { code: '541511', label: 'Custom Software & Web Development' },
+  { code: '541519', label: 'IT Services & Project Management' },
+  { code: '541512', label: 'Systems Design & IT Infrastructure' },
 ];
 
 const VALUE_PROPS = [
-  { icon: '🏛️', title: 'Federal prime contractor', desc: 'Direct access to federal agency contracts you couldn\'t bid alone.' },
-  { icon: '💰', title: 'Transparent Net-30 payments', desc: 'We pay within 30 days of agency receipt — every time, with email updates.' },
-  { icon: '📋', title: 'We source the work', desc: 'Our AI system finds opportunities matched to your NAICS codes and capacity.' },
-  { icon: '🤝', title: 'Long-term partnership', desc: 'Repeat contract opportunities as your performance record grows.' },
+  { icon: '💻', title: 'Federal IT work, matched to your skills', desc: 'We match federal IT contracts to your specific tech stack — React, Python, cloud, 508, or PM.' },
+  { icon: '💰', title: 'Transparent Net-30 payment', desc: 'We pay within 30 days of agency receipt — every time, tracked in your portal dashboard.' },
+  { icon: '📋', title: 'We handle compliance & billing', desc: 'Focus on the code. We manage FAR compliance, agency communication, and invoicing.' },
+  { icon: '🤝', title: 'Grow your federal track record', desc: 'Build documented past performance on federal IT work through our prime contractor vehicle.' },
 ];
 
 export default function VendorRegisterPage() {

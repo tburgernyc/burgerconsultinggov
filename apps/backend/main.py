@@ -226,10 +226,34 @@ async def _run_auto_triage(sol_id: str, pdf_url: str) -> Optional[int]:
     try:
         gemini_file = client.files.upload(file=temp_pdf_path)
         system_instruction = """
-        You are the Lead Procurement Compliance Director for Burger Consulting LLC.
-        Evaluate the solicitation under the Zero-Float doctrine.
-        Zero-Float means: reject anything requiring upfront capital, Davis-Bacon payroll,
-        security clearances, or structures incompatible with FFP/SCA execution.
+        You are the Lead Procurement Compliance Director for Burger Consulting LLC,
+        a federal IT services prime contractor specializing in:
+        - NAICS 541511: Custom Computer Programming (web development, UI/UX, software)
+        - NAICS 541519: Other Computer Related Services (IT project management, IT support, consulting)
+        - NAICS 541512: Computer Systems Design (systems architecture, UX design, cloud services)
+
+        Evaluate this solicitation under the IT Services Feasibility Framework:
+
+        ACCEPT (score 7-10) if:
+        - Work can be performed remotely by developers or IT professionals
+        - Deliverables are clearly defined (software, code, documentation, systems, reports)
+        - No active security clearance above Public Trust required
+        - Section 508 accessibility compliance required (positive signal — differentiator)
+        - Small business set-aside or simplified acquisition threshold
+        - Scope aligns with software development, IT consulting, web services, or system design
+
+        REJECT (score 1-4) if:
+        - SECRET, TS, or TS/SCI clearance required for all personnel
+        - Hardware manufacturing or physical equipment installation is the primary scope
+        - Requires specialized classified facilities or SCIFs
+        - Subcontracting explicitly prohibited
+        - Scope is entirely outside IT services
+
+        SCORE 9-10: Small business set-aside + remote delivery + clear IT deliverables + under $500K
+        SCORE 7-8: Competitive but manageable scope + clear IT deliverables
+        SCORE 5-6: On-site required or moderate clearance but IT-compatible scope
+        SCORE 1-4: TS clearance, ITAR, hardware-only, or non-IT scope
+
         Return strict JSON matching the provided schema.
         """
         response = client.models.generate_content(
@@ -385,17 +409,17 @@ async def cron_document_expiry_monitor() -> None:
 
 
 async def cron_sam_scan() -> None:
-    """Runs every 4 hours — query SAM.gov for new NAICS 561210/561720/561730 opportunities, then auto-triage."""
+    """Runs every 4 hours — query SAM.gov for new NAICS 541511/541519/541512 IT opportunities, then auto-triage."""
     sam_key = os.getenv("SAM_API_KEY", "")
     if not sam_key or sam_key.startswith("placeholder"):
         print("[CRON] SAM_API_KEY not set — SAM.gov scan skipped.")
         return
-    print("[CRON] Running SAM.gov scan...")
+    print("[CRON] Running SAM.gov IT services scan...")
     newly_inserted = []
     try:
         params = {
             "api_key": sam_key,
-            "naicsCode": "561210,561720,561730",
+            "naicsCode": "541511,541519,541512",
             "active": "true",
             "limit": 100,
             "postedFrom": (date.today() - timedelta(days=1)).strftime("%m/%d/%Y"),
@@ -579,13 +603,13 @@ async def cron_ar_aging() -> None:
 
 
 async def cron_usaspending_intelligence() -> None:
-    """Daily 6:00 AM ET — pull recent federal award data from USASpending.gov for competitive pricing intelligence."""
-    print("[CRON] Running USASpending.gov intelligence pull...")
+    """Daily 6:00 AM ET — pull recent federal IT award data from USASpending.gov for competitive pricing intelligence."""
+    print("[CRON] Running USASpending.gov IT intelligence pull...")
     try:
         payload = {
             "filters": {
                 "award_type_codes": ["A", "B", "C", "D"],
-                "naics_codes": ["561210", "561720", "561730"],
+                "naics_codes": ["541511", "541519", "541512"],
                 "time_period": [
                     {
                         "start_date": (date.today() - timedelta(days=365)).strftime("%Y-%m-%d"),
@@ -722,8 +746,8 @@ CREATE TABLE IF NOT EXISTS global_directives (
   dos_id TEXT NOT NULL DEFAULT '5624755',
   physical_address TEXT NOT NULL DEFAULT '105 E 117th St Apt 5F, New York, NY 10035',
   mailing_address TEXT NOT NULL DEFAULT 'PO Box 997, New York, NY 10018',
-  naics_codes TEXT[] NOT NULL DEFAULT '{561210,561720,561730}',
-  zero_float_doctrine JSONB NOT NULL DEFAULT '{"upfront_capital": false, "davis_bacon": false, "clearances": false}',
+  naics_codes TEXT[] NOT NULL DEFAULT '{541511,541519,541512}',
+  it_framework JSONB NOT NULL DEFAULT '{"remote_delivery": true, "clearance_required": false, "section_508_specialty": true, "contract_types": ["FFP","T&M","IDIQ"]}',
   cage_code TEXT DEFAULT 'PENDING',
   sam_status TEXT DEFAULT 'PENDING',
   updated_at TIMESTAMPTZ DEFAULT NOW()
@@ -767,6 +791,17 @@ CREATE TABLE IF NOT EXISTS vendor_registry (
   contact_name TEXT,
   email TEXT UNIQUE,
   phone TEXT,
+  -- IT-specific fields
+  tech_stack TEXT[],
+  primary_skill TEXT,
+  github_url TEXT,
+  portfolio_url TEXT,
+  clearance_level TEXT DEFAULT 'NONE',
+  remote_ok BOOLEAN DEFAULT true,
+  hourly_rate_min NUMERIC,
+  hourly_rate_max NUMERIC,
+  section_508_certified BOOLEAN DEFAULT false,
+  -- Compliance fields
   insurance_verified BOOLEAN DEFAULT false,
   insurance_expiry DATE,
   sam_verified BOOLEAN DEFAULT false,
@@ -779,6 +814,35 @@ CREATE TABLE IF NOT EXISTS vendor_registry (
   onboarding_status TEXT DEFAULT 'PENDING',
   portal_access BOOLEAN DEFAULT false,
   portal_password_hash TEXT,
+  notes TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS contract_milestones (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  contract_id UUID REFERENCES active_contracts(id) ON DELETE CASCADE,
+  milestone_name TEXT NOT NULL,
+  description TEXT,
+  due_date DATE,
+  completed_at TIMESTAMPTZ,
+  status TEXT DEFAULT 'PENDING',
+  deliverable_url TEXT,
+  invoice_amount NUMERIC,
+  notes TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS subcontractor_searches (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  solicitation_id TEXT REFERENCES solicitation_queue(solicitation_id),
+  search_query TEXT,
+  required_skills TEXT[],
+  clearance_required TEXT DEFAULT 'NONE',
+  remote_required BOOLEAN DEFAULT true,
+  budget_min NUMERIC,
+  budget_max NUMERIC,
+  candidates_found INTEGER DEFAULT 0,
+  status TEXT DEFAULT 'OPEN',
   notes TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -904,8 +968,23 @@ ALTER TABLE solicitation_queue ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ D
 ALTER TABLE solicitation_queue ADD COLUMN IF NOT EXISTS auto_dispatched BOOLEAN DEFAULT false;
 ALTER TABLE solicitation_queue ADD COLUMN IF NOT EXISTS deadline_alert_sent BOOLEAN DEFAULT false;
 ALTER TABLE active_contracts ADD COLUMN IF NOT EXISTS last_ar_followup_at TIMESTAMPTZ;
+ALTER TABLE active_contracts ADD COLUMN IF NOT EXISTS agency_cor_name TEXT;
+ALTER TABLE active_contracts ADD COLUMN IF NOT EXISTS agency_cor_email TEXT;
+ALTER TABLE active_contracts ADD COLUMN IF NOT EXISTS billing_type TEXT DEFAULT 'MONTHLY';
 ALTER TABLE vendor_quotes ADD COLUMN IF NOT EXISTS ai_evaluation JSONB;
 ALTER TABLE vendor_quotes ADD COLUMN IF NOT EXISTS notes TEXT;
+ALTER TABLE vendor_quotes ADD COLUMN IF NOT EXISTS tech_stack TEXT[];
+ALTER TABLE vendor_quotes ADD COLUMN IF NOT EXISTS deliverables TEXT;
+ALTER TABLE vendor_registry ADD COLUMN IF NOT EXISTS tech_stack TEXT[];
+ALTER TABLE vendor_registry ADD COLUMN IF NOT EXISTS primary_skill TEXT;
+ALTER TABLE vendor_registry ADD COLUMN IF NOT EXISTS github_url TEXT;
+ALTER TABLE vendor_registry ADD COLUMN IF NOT EXISTS portfolio_url TEXT;
+ALTER TABLE vendor_registry ADD COLUMN IF NOT EXISTS clearance_level TEXT DEFAULT 'NONE';
+ALTER TABLE vendor_registry ADD COLUMN IF NOT EXISTS remote_ok BOOLEAN DEFAULT true;
+ALTER TABLE vendor_registry ADD COLUMN IF NOT EXISTS hourly_rate_min NUMERIC;
+ALTER TABLE vendor_registry ADD COLUMN IF NOT EXISTS hourly_rate_max NUMERIC;
+ALTER TABLE vendor_registry ADD COLUMN IF NOT EXISTS section_508_certified BOOLEAN DEFAULT false;
+ALTER TABLE global_directives ADD COLUMN IF NOT EXISTS it_framework JSONB;
 """
 
 
@@ -964,23 +1043,24 @@ async def lifespan(app: FastAPI):
 # ──────────────── Pydantic Models ────────────────
 
 class Section1(BaseModel):
-    upfront_capital_required: bool = Field(description="Does the SOW require heavy equipment purchases or material mobilization?")
-    davis_bacon_applies: bool = Field(description="Does the contract require Davis-Bacon weekly certified payroll?")
-    firm_fixed_price: bool = Field(description="Is this a Firm-Fixed-Price contract with milestone or monthly billing?")
+    upfront_capital_required: bool = Field(description="Does this require purchasing hardware or software licenses upfront before billing?")
+    clearance_required: bool = Field(description="Is an active security clearance (SECRET, TS, TS/SCI) required for personnel?")
+    firm_fixed_price: bool = Field(description="Is this FFP, T&M, or IDIQ — any of which support remote IT delivery?")
 
 class Section2(BaseModel):
-    clearance_required: bool = Field(description="Are personnel or facility clearances required?")
-    subcontracting_barred: bool = Field(description="Is subcontracting explicitly barred?")
+    remote_delivery_allowed: bool = Field(description="Can work be performed fully or primarily remotely without mandatory on-site presence?")
+    subcontracting_barred: bool = Field(description="Is subcontracting explicitly prohibited in the solicitation?")
+    section_508_required: bool = Field(description="Does the solicitation require Section 508 / WCAG accessibility compliance? (positive signal)")
 
 class Section3(BaseModel):
-    primary_naics: str = Field(description="The 6-digit NAICS code.")
-    performance_zip: str = Field(description="The primary performance ZIP or UNKNOWN.")
-    sca_wage_floor: float = Field(description="Minimum SCA wage floor for primary labor category.")
+    primary_naics: str = Field(description="The 6-digit NAICS code (541511, 541519, 541512, or closest match).")
+    primary_deliverable_type: str = Field(description="Primary deliverable: WEB_DEV, SOFTWARE, IT_SUPPORT, CONSULTING, DESIGN, DATA_SERVICES, or OTHER.")
+    estimated_labor_hours: int = Field(description="Estimated total labor hours if discernible from the SOW, else 0.")
 
 class TriageAdjudication(BaseModel):
-    feasibility_score: int = Field(description="Score from 1 to 10.")
+    feasibility_score: int = Field(description="Score 1-10. 9-10: SB set-aside + remote + clear IT scope. 7-8: competitive but winnable. 5-6: on-site or moderate clearance. 1-4: TS clearance/hardware/non-IT.")
     decision: str = Field(description="PROCEED, REVIEW, or REJECT.")
-    reasoning: str = Field(description="Two-sentence justification.")
+    reasoning: str = Field(description="Two-sentence justification referencing BCG's IT capabilities.")
 
 class TriageReport(BaseModel):
     solicitation_id: str
@@ -1003,11 +1083,20 @@ class VendorRegisterRequest(BaseModel):
     contact_name: str
     email: str
     phone: Optional[str] = None
+    # IT-specific fields
+    tech_stack: Optional[List[str]] = None
+    primary_skill: Optional[str] = None
+    github_url: Optional[str] = None
+    portfolio_url: Optional[str] = None
+    clearance_level: Optional[str] = 'NONE'
+    remote_ok: Optional[bool] = True
+    hourly_rate_min: Optional[float] = None
+    hourly_rate_max: Optional[float] = None
+    section_508_certified: Optional[bool] = False
     sam_status: Optional[str] = None
     years_in_operation: Optional[int] = None
     team_size: Optional[str] = None
     max_concurrent_contracts: Optional[int] = None
-    mobilization_time: Optional[str] = None
     pay_when_paid_accepted: Optional[bool] = False
     notes: Optional[str] = None
 
@@ -1026,10 +1115,14 @@ class QuoteSubmitRequest(BaseModel):
     line_items: Optional[List[dict]] = None
     total_amount: float
     labor_rate_hourly: Optional[float] = None
+    estimated_hours: Optional[int] = None
     materials_cost: Optional[float] = None
     period_of_performance: Optional[str] = None
+    tech_stack: Optional[List[str]] = None
+    deliverables: Optional[str] = None
+    section_508_compliant: Optional[bool] = False
+    remote_delivery: Optional[bool] = True
     pay_when_paid_confirmed: bool = False
-    mobilization_timeline: Optional[str] = None
     notes: Optional[str] = None
 
 class ContractAwardRequest(BaseModel):
@@ -1062,7 +1155,7 @@ class ProposalGenerateRequest(BaseModel):
 
 # ──────────────── App ────────────────
 
-app = FastAPI(title="Hermes Cognitive Engine — Burger Consulting LLC", lifespan=lifespan)
+app = FastAPI(title="Hermes IT Procurement Engine — Burger Consulting LLC", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -1120,10 +1213,34 @@ async def analyze_solicitation(request: TriageRequest, _: None = Depends(_requir
     try:
         gemini_file = client.files.upload(file=temp_pdf_path)
         system_instruction = """
-        You are the Lead Procurement Compliance Director for Burger Consulting LLC.
-        Evaluate the solicitation under the Zero-Float doctrine.
-        Zero-Float means: reject anything requiring upfront capital, Davis-Bacon payroll,
-        security clearances, or structures incompatible with FFP/SCA execution.
+        You are the Lead Procurement Compliance Director for Burger Consulting LLC,
+        a federal IT services prime contractor specializing in:
+        - NAICS 541511: Custom Computer Programming (web development, UI/UX, software)
+        - NAICS 541519: Other Computer Related Services (IT project management, IT support, consulting)
+        - NAICS 541512: Computer Systems Design (systems architecture, UX design, cloud services)
+
+        Evaluate this solicitation under the IT Services Feasibility Framework:
+
+        ACCEPT (score 7-10) if:
+        - Work can be performed remotely by developers or IT professionals
+        - Deliverables are clearly defined (software, code, documentation, systems, reports)
+        - No active security clearance above Public Trust required
+        - Section 508 accessibility compliance required (positive signal — differentiator)
+        - Small business set-aside or simplified acquisition threshold
+        - Scope aligns with software development, IT consulting, web services, or system design
+
+        REJECT (score 1-4) if:
+        - SECRET, TS, or TS/SCI clearance required for all personnel
+        - Hardware manufacturing or physical equipment installation is the primary scope
+        - Requires specialized classified facilities or SCIFs
+        - Subcontracting explicitly prohibited
+        - Scope is entirely outside IT services
+
+        SCORE 9-10: Small business set-aside + remote delivery + clear IT deliverables + under $500K
+        SCORE 7-8: Competitive but manageable scope + clear IT deliverables
+        SCORE 5-6: On-site required or moderate clearance but IT-compatible scope
+        SCORE 1-4: TS clearance, ITAR, hardware-only, or non-IT scope
+
         Return strict JSON matching the provided schema.
         """
         response = client.models.generate_content(
@@ -1348,14 +1465,20 @@ async def register_vendor(request: VendorRegisterRequest):
             INSERT INTO vendor_registry
                 (legal_name, cage_code, naics_codes, zip_code, city, state,
                  contact_name, email, phone, pay_when_paid_accepted,
-                 onboarding_status, notes)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'DOCS_SUBMITTED',%s)
+                 tech_stack, primary_skill, github_url, portfolio_url,
+                 clearance_level, remote_ok, hourly_rate_min, hourly_rate_max,
+                 section_508_certified, onboarding_status, notes)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'DOCS_SUBMITTED',%s)
             RETURNING id
         """, (
             request.legal_name, request.cage_code,
             request.naics_codes, request.zip_code, request.city, request.state,
             request.contact_name, request.email, request.phone,
-            request.pay_when_paid_accepted, request.notes
+            request.pay_when_paid_accepted,
+            request.tech_stack, request.primary_skill, request.github_url, request.portfolio_url,
+            request.clearance_level or 'NONE', request.remote_ok if request.remote_ok is not None else True,
+            request.hourly_rate_min, request.hourly_rate_max,
+            request.section_508_certified or False, request.notes
         ))
         vendor_id = cur.fetchone()[0]
         conn.commit()
@@ -1552,34 +1675,38 @@ async def evaluate_quotes_ai(solicitation_id: str, _: None = Depends(_require_ad
         raise HTTPException(status_code=404, detail="No pending quotes found for this solicitation.")
 
     triage_report = sol[0] if sol else {}
-    sca_wage_floor = 0
+    deliverable_type = "IT Services"
     if triage_report:
-        sca_wage_floor = (triage_report.get("section3_scope") or {}).get("sca_wage_floor", 0)
+        deliverable_type = (triage_report.get("section3_scope") or {}).get("primary_deliverable_type", "IT Services")
 
     quotes_text = "\n".join([
-        f"Quote {i+1}: Vendor={r[1]}, Total=${r[2]:,.2f}, Labor=${r[3] or 0}/hr, "
-        f"Materials=${r[4] or 0}, Period={r[5]}, PWP={r[6]}, "
+        f"Quote {i+1}: Vendor={r[1]}, Total=${r[2]:,.2f}, Labor Rate=${r[3] or 0}/hr, "
+        f"Period={r[5]}, PWP_Confirmed={r[6]}, "
         f"Rating={r[8] or 'N/A'}, Contracts Completed={r[9] or 0}, Notes={r[7] or 'None'}"
         for i, r in enumerate(quotes)
     ])
 
-    prompt = f"""You are the Chief Procurement Officer for Burger Consulting LLC, a federal prime contractor.
-Evaluate the following vendor quotes for solicitation {solicitation_id}
-(Agency: {sol[1] if sol else 'TBD'}, NAICS: {sol[2] if sol else 'TBD'},
-Est. Value: ${sol[3] or 0:,.0f}, SCA Wage Floor: ${sca_wage_floor}/hr).
+    prompt = f"""You are the Chief Procurement Officer for Burger Consulting LLC, a federal IT services prime contractor
+specializing in NAICS 541511, 541519, 541512 (custom programming, IT services, systems design).
 
-QUOTES:
+Evaluate IT subcontractor quotes for solicitation {solicitation_id}
+(Agency: {sol[1] if sol else 'TBD'}, NAICS: {sol[2] if sol else 'TBD'},
+Est. Value: ${sol[3] or 0:,.0f}, Deliverable Type: {deliverable_type}).
+
+SUBCONTRACTOR QUOTES:
 {quotes_text}
 
 Evaluate and return a JSON object with:
 - "ranked_quotes": array of objects with vendor_name, rank (1=best), recommendation (AWARD/PROCEED/CLARIFY/REJECT),
-  rationale (one sentence), risk_flags (array of strings), sca_compliant (bool based on labor rate >= {sca_wage_floor})
+  rationale (one sentence), risk_flags (array of strings), section_508_capable (bool),
+  technical_fit_score (1-10 based on skills match to deliverable type)
 - "recommended_vendor": name of top choice
-- "recommended_award_price": suggested prime contract price (vendor total + 15% margin)
-- "evaluation_summary": 2-3 sentence overall assessment
-- "key_risks": array of top risks across all quotes
+- "recommended_award_price": suggested prime contract price (vendor total + 15-20% margin)
+- "evaluation_summary": 2-3 sentence overall assessment of technical capability and pricing
+- "key_risks": array of top risks (Section 508 gaps, communication, timeline, clearance issues)
 
-Be objective. Prioritize: SCA compliance > pay-when-paid acceptance > price competitiveness > past performance."""
+Be objective. Prioritize: Technical capability > Section 508 compliance > price > pay-when-paid > past performance.
+For IT work, a vendor with strong relevant skills at a slightly higher rate is preferable to a cheaper vendor without them."""
 
     try:
         response = client.models.generate_content(
@@ -1668,14 +1795,25 @@ async def generate_proposal(request: ProposalGenerateRequest, _: None = Depends(
     target_price = request.target_price or (float(est_value) * 1.15 if est_value else None)
     triage_summary = json.dumps(triage_report or {}, indent=2)[:2000]
 
-    prompt = f"""You are the Chief Proposal Writer for Burger Consulting LLC (EIN: 84-3113166),
-a federal facilities management prime contractor in New York City. NAICS codes: 561210, 561720, 561730.
+    deliverable_type = "IT Services"
+    section_508 = False
+    if triage_report:
+        scope = triage_report.get("section3_scope") or {}
+        deliverable_type = scope.get("primary_deliverable_type", "IT Services")
+        section_508 = (triage_report.get("section2_compliance") or {}).get("section_508_required", False)
 
-Write a complete federal proposal for the following solicitation:
+    prompt = f"""You are the Chief Proposal Writer for Burger Consulting LLC (EIN: 84-3113166),
+a federal IT services prime contractor in New York City.
+NAICS codes: 541511 (Custom Computer Programming), 541519 (Other Computer Related Services), 541512 (Computer Systems Design).
+Principal: Timothy J. Burger — software engineer and UI/UX developer with expertise in web application development and Section 508 accessibility compliance.
+
+Write a complete, compelling federal proposal for the following IT services solicitation:
 
 SOLICITATION: {request.solicitation_id}
 AGENCY: {agency or 'Federal Agency'}
 NAICS: {naics or 'See SOW'}
+DELIVERABLE TYPE: {deliverable_type}
+SECTION 508 REQUIRED: {section_508}
 ESTIMATED VALUE: ${float(est_value or 0):,.0f}
 RESPONSE DEADLINE: {deadline.strftime('%B %d, %Y') if deadline else 'TBD'}
 TARGET PRICE: ${target_price:,.2f if target_price else 'TBD'}
@@ -1683,29 +1821,42 @@ TARGET PRICE: ${target_price:,.2f if target_price else 'TBD'}
 TRIAGE ANALYSIS SUMMARY:
 {triage_summary}
 
-SELECTED SUBCONTRACTOR: {json.dumps(vendor_info, indent=2) if vendor_info else 'TBD — to be inserted'}
+SELECTED SUBCONTRACTOR / KEY PERSONNEL: {json.dumps(vendor_info, indent=2) if vendor_info else 'TBD — to be inserted after award'}
 
 APPROVED BOILERPLATE AVAILABLE:
 {json.dumps(boilerplate, indent=2)[:1000] if boilerplate else 'None on file'}
 
 ADDITIONAL NOTES: {request.additional_notes or 'None'}
 
-Generate a complete proposal with these exact sections. For each section, write 2-4 paragraphs of
-professional federal proposal language:
+Generate a complete proposal with these exact sections. Write 2-4 paragraphs per section using
+professional federal IT proposal language (clear, direct, compliance-focused):
 
-1. TECHNICAL_APPROACH: How BCG will execute the SOW. Reference Zero-Float execution model,
-   FFP structure, subcontractor management, quality control plan.
-2. MANAGEMENT_PLAN: Project management structure, key personnel (Timothy Burger, PM),
-   subcontractor oversight, reporting cadence, risk mitigation.
-3. PRICING_NARRATIVE: Justification for the proposed price. Reference labor categories,
-   SCA compliance, materials, overhead, and the 15% prime management fee structure.
-4. PAST_PERFORMANCE: BCG's capability narrative (facilities management, NYC metro area,
-   SCA-compliant contracts). Note: First-year company — emphasize founder experience and
-   subcontractor credentials.
-5. WIN_PROBABILITY: Integer 1-100 estimating the probability of award given the analysis.
+1. TECHNICAL_APPROACH: Describe BCG's IT delivery methodology. Include: Agile/iterative development
+   approach (2-week sprints with agency checkpoints), technology stack selection rationale,
+   Section 508 / WCAG 2.2 AA compliance plan (if required), security controls (NIST SP 800-53),
+   remote delivery model, testing and QA protocol, and deliverable acceptance criteria.
+
+2. MANAGEMENT_PLAN: Timothy J. Burger as Principal/PM. Communication plan (weekly status reports,
+   GitHub/Jira project tracking, monthly demos to agency stakeholders). Subcontractor oversight via
+   code review and deliverable QA. Risk mitigation: backup developer roster, version control,
+   documentation standards. Escalation path for scope changes. Reporting cadence and tools.
+
+3. PRICING_NARRATIVE: Labor category breakdown (Senior Developer, UI/UX Designer, PM, QA Engineer)
+   at GSA IT Schedule labor rates. Hours estimate per deliverable. BCG prime management fee of
+   15-20% for oversight, compliance assurance, PM, and billing administration. No upfront capital
+   required — all work billed monthly or milestone-based. Competitive with market comparables
+   from USASpending.gov award data for this NAICS.
+
+4. PAST_PERFORMANCE: BCG's IT capability narrative. Note: Company in first year of federal contracting.
+   Emphasize: Timothy Burger's direct software engineering expertise (UI/UX, web development, system design),
+   Section 508 compliance knowledge, and the strength of the vetted subcontractor network.
+   Reference relevant private-sector or academic experience. Commitment to building a strong federal track record.
+
+5. WIN_PROBABILITY: Integer 1-100. Consider: set-aside status, competition level for this NAICS,
+   BCG's technical fit for the deliverable type, Section 508 advantage (if applicable), and price competitiveness.
 
 Return as JSON with keys: technical_approach, management_plan, pricing_narrative,
-past_performance, win_probability (integer), executive_summary (2 sentences)."""
+past_performance, win_probability (integer), executive_summary (2 sentences max)."""
 
     try:
         response = client.models.generate_content(
@@ -1810,6 +1961,89 @@ async def get_proposal(solicitation_id: str, _: None = Depends(_require_admin)):
             "win_probability": row[6], "status": row[7],
             "created_at": row[8].isoformat() if row[8] else None,
             "updated_at": row[9].isoformat() if row[9] else None}
+
+
+# ──────────────── Milestones ────────────────
+
+class MilestoneCreateRequest(BaseModel):
+    milestone_name: str
+    description: Optional[str] = None
+    due_date: Optional[str] = None
+    invoice_amount: Optional[float] = None
+    deliverable_url: Optional[str] = None
+    notes: Optional[str] = None
+
+@app.get("/api/contracts/{contract_id}/milestones")
+async def get_milestones(contract_id: str):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT id, milestone_name, description, due_date, completed_at,
+               status, deliverable_url, invoice_amount, notes, created_at
+        FROM contract_milestones WHERE contract_id=%s::uuid ORDER BY due_date ASC NULLS LAST
+    """, (contract_id,))
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+    return [{"id": str(r[0]), "milestone_name": r[1], "description": r[2],
+             "due_date": r[3].isoformat() if r[3] else None,
+             "completed_at": r[4].isoformat() if r[4] else None,
+             "status": r[5], "deliverable_url": r[6],
+             "invoice_amount": float(r[7]) if r[7] else None,
+             "notes": r[8], "created_at": r[9].isoformat() if r[9] else None} for r in rows]
+
+
+@app.post("/api/contracts/{contract_id}/milestones")
+async def create_milestone(contract_id: str, request: MilestoneCreateRequest, _: None = Depends(_require_admin)):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        INSERT INTO contract_milestones
+            (contract_id, milestone_name, description, due_date, invoice_amount, deliverable_url, notes)
+        VALUES (%s::uuid, %s, %s, %s, %s, %s, %s) RETURNING id
+    """, (contract_id, request.milestone_name, request.description,
+          request.due_date, request.invoice_amount, request.deliverable_url, request.notes))
+    milestone_id = cur.fetchone()[0]
+    conn.commit()
+    cur.close()
+    conn.close()
+    return {"status": "created", "milestone_id": str(milestone_id)}
+
+
+@app.put("/api/contracts/{contract_id}/milestones/{milestone_id}")
+async def update_milestone(contract_id: str, milestone_id: str,
+                            status: str = Query(...), deliverable_url: Optional[str] = Query(None),
+                            _: None = Depends(_require_admin)):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    completed_at = "NOW()" if status == "COMPLETE" else "NULL"
+    cur.execute(f"""
+        UPDATE contract_milestones
+        SET status=%s, completed_at={completed_at}, deliverable_url=COALESCE(%s, deliverable_url)
+        WHERE id=%s::uuid AND contract_id=%s::uuid
+    """, (status, deliverable_url, milestone_id, contract_id))
+    conn.commit()
+    cur.close()
+    conn.close()
+    return {"status": "updated", "milestone_id": milestone_id, "new_status": status}
+
+
+@app.get("/api/subcontractor-searches")
+async def list_subcontractor_searches(_: None = Depends(_require_admin)):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT id, solicitation_id, search_query, required_skills,
+               budget_min, budget_max, candidates_found, status, created_at
+        FROM subcontractor_searches ORDER BY created_at DESC LIMIT 50
+    """)
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+    return [{"id": str(r[0]), "solicitation_id": r[1], "search_query": r[2],
+             "required_skills": r[3], "budget_min": float(r[4]) if r[4] else None,
+             "budget_max": float(r[5]) if r[5] else None, "candidates_found": r[6],
+             "status": r[7], "created_at": r[8].isoformat() if r[8] else None} for r in rows]
 
 
 # ──────────────── Contracts ────────────────

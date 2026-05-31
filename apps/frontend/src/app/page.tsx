@@ -32,10 +32,10 @@ export default function HomePage() {
             SBA Small Business · Federally Registered
           </div>
           <h1 style={{ fontFamily: "'DM Serif Display', serif", fontSize: 'clamp(2.25rem, 5vw, 3.75rem)', fontWeight: 400, lineHeight: 1.1, marginBottom: '1rem', maxWidth: 720 }}>
-            Federal Facilities Services,<br />Professionally Managed.
+            Federal IT Services,<br />Built and Managed by Engineers.
           </h1>
           <p style={{ fontSize: '1.05rem', color: 'rgba(255,255,255,0.72)', maxWidth: 580, lineHeight: 1.7, marginBottom: '2.5rem' }}>
-            Burger Consulting LLC delivers facilities support, janitorial, and landscaping services to U.S. government agencies under firm-fixed-price contracts — on time, on budget, and fully FAR compliant.
+            Burger Consulting LLC delivers custom software development, IT project management, and systems design to U.S. government agencies — Section 508 compliant, remotely delivered, and fully FAR compliant.
           </p>
           <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
             <Link href="/vendor-portal" className="btn btn-primary btn-lg">Partner With Us</Link>
@@ -70,7 +70,7 @@ export default function HomePage() {
               What We Deliver
             </h2>
             <p style={{ color: 'var(--muted)', maxWidth: 540, margin: '0 auto', fontSize: '0.95rem', lineHeight: 1.7 }}>
-              Three federally registered service lines. All executed under firm-fixed-price contracts with full FAR compliance.
+              Three federally registered IT service lines. All delivered remotely by vetted specialists under firm-fixed-price contracts with full FAR compliance.
             </p>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1.5rem' }}>
@@ -247,48 +247,48 @@ export default function HomePage() {
 
 const services = [
   {
-    naics: '561210',
-    title: 'Facilities Support Services',
-    image: 'https://images.unsplash.com/photo-1486325212027-8081e485255e?auto=format&fit=crop&w=600&q=80',
-    desc: 'Comprehensive facilities management and support for federal installations, from operations coordination to maintenance oversight.',
+    naics: '541511',
+    title: 'Custom Software & Web Development',
+    image: 'https://images.unsplash.com/photo-1461749280684-dccba630e2f6?auto=format&fit=crop&w=600&q=80',
+    desc: 'Federal-grade software development and web application delivery. UI/UX design, frontend engineering, and Section 508 accessibility compliance for government digital services.',
     bullets: [
-      'Operations scheduling and coordination',
-      'Building maintenance oversight',
-      'Vendor coordination and quality control',
-      'Compliance documentation management',
+      'Web application development (React, Next.js, TypeScript)',
+      'UI/UX design and prototyping for federal audiences',
+      'Section 508 / WCAG 2.2 AA accessibility compliance',
+      'Legacy system modernization and migration',
     ],
   },
   {
-    naics: '561720',
-    title: 'Janitorial Services',
-    image: 'https://images.unsplash.com/photo-1581578731548-c64695cc6952?auto=format&fit=crop&w=600&q=80',
-    desc: 'Professional commercial cleaning services for federal buildings and facilities, compliant with GSA green cleaning standards.',
+    naics: '541519',
+    title: 'IT Services & Project Management',
+    image: 'https://images.unsplash.com/photo-1553877522-43269d4ea984?auto=format&fit=crop&w=600&q=80',
+    desc: 'End-to-end IT project management, technical consulting, and IT support services. We manage timelines, deliverables, and subcontractor teams so agencies receive consistent, documented results.',
     bullets: [
-      'Daily, weekly, and periodic cleaning schedules',
-      'GSA green cleaning product compliance',
-      'OSHA safety protocol adherence',
-      'Quality control inspections and reporting',
+      'IT project management (Agile / Scrum delivery)',
+      'Technical consulting and requirements analysis',
+      'IT helpdesk and user support services',
+      'Data management and reporting services',
     ],
   },
   {
-    naics: '561730',
-    title: 'Landscaping Services',
-    image: 'https://images.unsplash.com/photo-1416879595882-3373a0480b5b?auto=format&fit=crop&w=600&q=80',
-    desc: 'Full-service grounds maintenance and landscaping for federal properties, maintained to the highest standards year-round.',
+    naics: '541512',
+    title: 'Systems Design & IT Infrastructure',
+    image: 'https://images.unsplash.com/photo-1558494949-ef010cbdcc31?auto=format&fit=crop&w=600&q=80',
+    desc: 'Systems architecture, cloud platform configuration, and IT infrastructure design for federal agencies. From design through deployment — delivered remotely, documented thoroughly.',
     bullets: [
-      'Lawn maintenance and seasonal mowing',
-      'Snow and ice removal services',
-      'Seasonal planting, mulching, and bed care',
-      'Irrigation system monitoring',
+      'System architecture and technical design',
+      'Cloud platform configuration (AWS GovCloud, Azure Government)',
+      'Network and infrastructure planning',
+      'Security controls aligned to NIST SP 800-53',
     ],
   },
 ];
 
 const approach = [
-  { title: 'FAR Compliant', desc: 'Full Federal Acquisition Regulation compliance on every engagement — FAR Parts 9, 19, 52, and applicable service contract clauses.' },
-  { title: 'Firm-Fixed-Price', desc: 'All contracts structured as FFP — predictable costs and no surprises for agency contracting officers or our subcontractor partners.' },
-  { title: 'Dedicated PMO', desc: 'A dedicated project management office handles solicitation review, vendor coordination, and contract administration from award through close-out.' },
-  { title: 'Net-30 Payment', desc: 'Subcontractor payments released within 30 days of confirmed agency receipt — transparent, predictable, and contractually committed.' },
+  { title: 'FAR & Section 508 Compliant', desc: 'Full Federal Acquisition Regulation compliance including Section 508 accessibility requirements on every digital deliverable — a technical standard that narrows competition.' },
+  { title: 'Remote-First Delivery', desc: 'All IT work is delivered remotely using Agile methodology with biweekly agency check-ins, GitHub version control, and milestone-based acceptance criteria.' },
+  { title: 'Dedicated IT Project Management', desc: 'Timothy J. Burger personally oversees every engagement — reviewing code, tracking milestones, managing subcontractors, and communicating with agency CORs.' },
+  { title: 'Net-30 Subcontractor Payment', desc: 'Developer and IT subcontractor payments released within 30 days of confirmed agency receipt — transparent, contractually committed, and always on time.' },
 ];
 
 const howItWorks = [
@@ -300,11 +300,11 @@ const howItWorks = [
 ];
 
 const partnerBenefits = [
-  'Access to federal contract opportunities matched to your service capabilities',
-  'We handle all federal paperwork, compliance, and billing — you execute',
-  'Digital quote submission, invoicing, and status tracking via our online portal',
-  'Payment within 30 days of agency receipt — no delay, no excuses',
-  'Long-term partnership with repeat opportunities as your track record grows',
+  'Federal IT contract opportunities matched to your tech stack and skills',
+  'We handle all federal compliance, billing, and administration — you write the code',
+  'Digital quote submission, milestone tracking, and payment management via our portal',
+  'Payment within 30 days of agency receipt — transparent, reliable, every time',
+  'Section 508 compliance support — we help your deliverables meet federal accessibility standards',
 ];
 
 const trustItems = [

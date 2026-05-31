@@ -25,10 +25,10 @@ export default function AboutPage() {
             About the Company
           </div>
           <h1 style={{ fontFamily: "'DM Serif Display', serif", fontSize: 'clamp(2rem, 4vw, 3.25rem)', fontWeight: 400, lineHeight: 1.15, marginBottom: '1rem', maxWidth: 680 }}>
-            A Federal Prime Contractor Built on Compliance, Transparency, and Reliable Execution
+            A Federal IT Prime Contractor Built by an Engineer
           </h1>
           <p style={{ fontSize: '1rem', color: 'rgba(255,255,255,0.68)', maxWidth: 560, lineHeight: 1.75 }}>
-            Burger Consulting LLC is a New York-based small business registered with the U.S. federal government to deliver facilities support, janitorial, and landscaping services to government agencies nationwide.
+            Burger Consulting LLC is a New York-based small business delivering custom software development, IT project management, and systems design to U.S. government agencies — with Section 508 compliance built in from day one.
           </p>
         </div>
       </section>
