@@ -33,9 +33,11 @@ function Header() {
           BURGER<span> CONSULTING</span>
         </Link>
         <ul className="nav-links">
+          <li><a href="/about">About</a></li>
+          <li><a href="/services">Services</a></li>
           <li><a href="/capabilities">Capabilities</a></li>
           <li><a href="/contact">Contact</a></li>
-          <li><a href="/vendor-portal" style={{ color: 'var(--gold)' }}>Partner With Us</a></li>
+          <li><a href="/portal/register" style={{ color: 'var(--gold)' }}>Partner With Us</a></li>
           <li><a href="/portal" className="btn btn-outline btn-sm">Subcontractor Login</a></li>
         </ul>
       </nav>
@@ -78,8 +80,10 @@ function Footer() {
             <div style={{ color: 'var(--gold)', fontWeight: 700, marginBottom: '0.75rem', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Quick Links</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
               {[
+                { href: '/about', label: 'About Us' },
+                { href: '/services', label: 'Our Services' },
                 { href: '/capabilities', label: 'Capabilities Statement' },
-                { href: '/vendor-portal', label: 'Become a Partner' },
+                { href: '/portal/register', label: 'Become a Partner' },
                 { href: '/contact', label: 'Contact Procurement' },
                 { href: '/portal', label: 'Subcontractor Login' },
               ].map(l => (

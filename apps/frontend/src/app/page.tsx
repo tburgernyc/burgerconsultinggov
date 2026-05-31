@@ -117,9 +117,13 @@ export default function HomePage() {
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1.25rem' }}>
             {approach.map(item => (
-              <div key={item.title} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(201,168,76,0.15)', borderRadius: 12, padding: '1.5rem' }}>
-                <div style={{ fontSize: '1.75rem', marginBottom: '0.875rem' }}>{item.icon}</div>
-                <div style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '0.4rem', color: '#fff' }}>{item.title}</div>
+              <div key={item.title} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(201,168,76,0.15)', borderRadius: 12, padding: '1.75rem' }}>
+                <div style={{ width: 40, height: 40, borderRadius: 8, background: 'rgba(201,168,76,0.1)', border: '1px solid rgba(201,168,76,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1.125rem' }}>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="22 4 12 14.01 9 11.01"/><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+                  </svg>
+                </div>
+                <div style={{ fontFamily: "'DM Serif Display', serif", fontSize: '1.05rem', fontWeight: 400, marginBottom: '0.4rem', color: '#fff' }}>{item.title}</div>
                 <div style={{ fontSize: '0.83rem', color: 'rgba(255,255,255,0.58)', lineHeight: 1.6 }}>{item.desc}</div>
               </div>
             ))}
@@ -165,6 +169,40 @@ export default function HomePage() {
               <div style={{ color: '#fff', fontFamily: "'DM Serif Display', serif", fontSize: '1.1rem' }}>Net-30 Guarantee</div>
               <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.72rem', marginTop: '0.2rem' }}>From agency payment receipt</div>
             </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── How It Works ── */}
+      <section className="section" style={{ background: 'var(--light)' }}>
+        <div className="container">
+          <div style={{ textAlign: 'center', marginBottom: '3rem' }}>
+            <div style={{ fontSize: '0.68rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--gold)', marginBottom: '0.75rem' }}>The Process</div>
+            <h2 style={{ fontFamily: "'DM Serif Display', serif", fontSize: '2.25rem', color: 'var(--navy)', fontWeight: 400, marginBottom: '0.75rem' }}>
+              Simple. Compliant. Reliable.
+            </h2>
+            <p style={{ color: 'var(--muted)', maxWidth: 500, margin: '0 auto', fontSize: '0.95rem', lineHeight: 1.7 }}>
+              Whether you&apos;re a government agency or a subcontractor, here&apos;s how an engagement with Burger Consulting LLC works.
+            </p>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0', background: '#fff', borderRadius: 16, border: '1px solid var(--border)', overflow: 'hidden', boxShadow: '0 2px 12px rgba(10,22,40,0.05)' }}>
+            {howItWorks.map((step, i) => (
+              <div key={step.title} style={{ padding: '2rem 1.5rem', borderRight: i < howItWorks.length - 1 ? '1px solid var(--border)' : 'none', position: 'relative' }}>
+                <div style={{ fontFamily: "'DM Serif Display', serif", fontSize: '2.5rem', color: 'var(--navy)', opacity: 0.06, position: 'absolute', top: '1rem', right: '1.25rem', lineHeight: 1 }}>
+                  {String(i + 1).padStart(2, '0')}
+                </div>
+                <div style={{ width: 36, height: 36, borderRadius: 8, background: 'rgba(201,168,76,0.1)', border: '1px solid rgba(201,168,76,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1rem' }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    {step.icon}
+                  </svg>
+                </div>
+                <div style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--navy)', marginBottom: '0.4rem', fontFamily: "'DM Sans', sans-serif" }}>{step.title}</div>
+                <div style={{ fontSize: '0.8rem', color: 'var(--muted)', lineHeight: 1.6 }}>{step.desc}</div>
+              </div>
+            ))}
+          </div>
+          <div style={{ textAlign: 'center', marginTop: '2rem' }}>
+            <Link href="/services" className="btn btn-outline">Learn More About Our Services</Link>
           </div>
         </div>
       </section>
@@ -247,10 +285,18 @@ const services = [
 ];
 
 const approach = [
-  { icon: '📋', title: 'FAR Compliant', desc: 'Full Federal Acquisition Regulation compliance on every engagement — FAR Parts 9, 19, 52, and applicable service contract clauses.' },
-  { icon: '📄', title: 'Firm-Fixed-Price', desc: 'All contracts structured as FFP — predictable costs and no surprises for agency contracting officers or our subcontractor partners.' },
-  { icon: '🏢', title: 'Dedicated PMO', desc: 'A dedicated project management office handles solicitation review, vendor coordination, and contract administration from award through close-out.' },
-  { icon: '💰', title: 'Net-30 Payment', desc: 'Subcontractor payments released within 30 days of confirmed agency receipt — transparent, predictable, and contractually committed.' },
+  { title: 'FAR Compliant', desc: 'Full Federal Acquisition Regulation compliance on every engagement — FAR Parts 9, 19, 52, and applicable service contract clauses.' },
+  { title: 'Firm-Fixed-Price', desc: 'All contracts structured as FFP — predictable costs and no surprises for agency contracting officers or our subcontractor partners.' },
+  { title: 'Dedicated PMO', desc: 'A dedicated project management office handles solicitation review, vendor coordination, and contract administration from award through close-out.' },
+  { title: 'Net-30 Payment', desc: 'Subcontractor payments released within 30 days of confirmed agency receipt — transparent, predictable, and contractually committed.' },
+];
+
+const howItWorks = [
+  { title: 'Solicitation Review', desc: 'We identify and evaluate federal solicitations across our NAICS service areas.', icon: <><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></> },
+  { title: 'Proposal Submitted', desc: 'A fully compliant, competitively priced proposal is submitted before the deadline.', icon: <><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></> },
+  { title: 'Vendor Sourced', desc: 'Qualified subcontractors are selected and issued RFQs matched to their capabilities.', icon: <><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></> },
+  { title: 'Work Executed', desc: 'The awarded subcontractor delivers services per the statement of work.', icon: <><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></> },
+  { title: 'Invoiced & Paid', desc: 'Agency is invoiced monthly. Subcontractor receives payment within 30 days of agency receipt.', icon: <><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></> },
 ];
 
 const partnerBenefits = [
