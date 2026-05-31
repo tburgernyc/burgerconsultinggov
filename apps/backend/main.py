@@ -227,32 +227,33 @@ async def _run_auto_triage(sol_id: str, pdf_url: str) -> Optional[int]:
         gemini_file = client.files.upload(file=temp_pdf_path)
         system_instruction = """
         You are the Lead Procurement Compliance Director for Burger Consulting LLC,
-        a federal IT services prime contractor specializing in:
-        - NAICS 541511: Custom Computer Programming (web development, UI/UX, software)
-        - NAICS 541519: Other Computer Related Services (IT project management, IT support, consulting)
-        - NAICS 541512: Computer Systems Design (systems architecture, UX design, cloud services)
+        a federal facilities services prime contractor specializing in:
+        - NAICS 561210: Facilities Support Services (building operations, maintenance management, base support)
+        - NAICS 561720: Janitorial Services (commercial cleaning, custodial, sanitization)
+        - NAICS 561730: Landscaping Services (grounds maintenance, lawn care, snow removal)
 
-        Evaluate this solicitation under the IT Services Feasibility Framework:
+        Evaluate this solicitation under the Zero-Float Feasibility Framework:
 
         ACCEPT (score 7-10) if:
-        - Work can be performed remotely by developers or IT professionals
-        - Deliverables are clearly defined (software, code, documentation, systems, reports)
-        - No active security clearance above Public Trust required
-        - Section 508 accessibility compliance required (positive signal — differentiator)
-        - Small business set-aside or simplified acquisition threshold
-        - Scope aligns with software development, IT consulting, web services, or system design
+        - Scope is janitorial, custodial, facilities management, landscaping, grounds maintenance, or base support
+        - Firm-Fixed-Price (FFP) or performance-based service contract
+        - Small business or 8(a) set-aside eligible
+        - Recurring/evergreen contract (monthly or annual performance period)
+        - No upfront capital expenditures required (equipment, materials purchased by agency)
+        - Subcontracting permitted — work can be delegated to approved vendors
 
         REJECT (score 1-4) if:
-        - SECRET, TS, or TS/SCI clearance required for all personnel
-        - Hardware manufacturing or physical equipment installation is the primary scope
-        - Requires specialized classified facilities or SCIFs
-        - Subcontracting explicitly prohibited
-        - Scope is entirely outside IT services
+        - Construction, renovation, or major repair (requires bonding, surety, upfront materials)
+        - Davis-Bacon Act certified payroll required (incompatible with Zero-Float model)
+        - Security clearances required for all field staff
+        - Non-FFP billing structure (T&M, cost-plus, CPFF)
+        - Equipment procurement is primary deliverable (not service)
+        - Scope is entirely outside facilities, janitorial, or landscaping services
 
-        SCORE 9-10: Small business set-aside + remote delivery + clear IT deliverables + under $500K
-        SCORE 7-8: Competitive but manageable scope + clear IT deliverables
-        SCORE 5-6: On-site required or moderate clearance but IT-compatible scope
-        SCORE 1-4: TS clearance, ITAR, hardware-only, or non-IT scope
+        SCORE 9-10: SB/8(a) set-aside + FFP + recurring service + no clearance + under $250K
+        SCORE 7-8: Competitive but manageable scope + clear service deliverables
+        SCORE 5-6: On-site specific requirements or moderate compliance burden but FFP-compatible
+        SCORE 1-4: Davis-Bacon, construction bonding, clearance, or non-service primary scope
 
         Return strict JSON matching the provided schema.
         """
@@ -409,17 +410,17 @@ async def cron_document_expiry_monitor() -> None:
 
 
 async def cron_sam_scan() -> None:
-    """Runs every 4 hours — query SAM.gov for new NAICS 541511/541519/541512 IT opportunities, then auto-triage."""
+    """Runs every 4 hours — query SAM.gov for new NAICS 561210/561720/561730 facilities opportunities, then auto-triage."""
     sam_key = os.getenv("SAM_API_KEY", "")
     if not sam_key or sam_key.startswith("placeholder"):
         print("[CRON] SAM_API_KEY not set — SAM.gov scan skipped.")
         return
-    print("[CRON] Running SAM.gov IT services scan...")
+    print("[CRON] Running SAM.gov facilities services scan...")
     newly_inserted = []
     try:
         params = {
             "api_key": sam_key,
-            "naicsCode": "541511,541519,541512",
+            "naicsCode": "561210,561720,561730",
             "active": "true",
             "limit": 100,
             "postedFrom": (date.today() - timedelta(days=1)).strftime("%m/%d/%Y"),
@@ -603,13 +604,13 @@ async def cron_ar_aging() -> None:
 
 
 async def cron_usaspending_intelligence() -> None:
-    """Daily 6:00 AM ET — pull recent federal IT award data from USASpending.gov for competitive pricing intelligence."""
-    print("[CRON] Running USASpending.gov IT intelligence pull...")
+    """Daily 6:00 AM ET — pull recent federal facilities award data from USASpending.gov for competitive pricing intelligence."""
+    print("[CRON] Running USASpending.gov facilities intelligence pull...")
     try:
         payload = {
             "filters": {
                 "award_type_codes": ["A", "B", "C", "D"],
-                "naics_codes": ["541511", "541519", "541512"],
+                "naics_codes": ["561210", "561720", "561730"],
                 "time_period": [
                     {
                         "start_date": (date.today() - timedelta(days=365)).strftime("%Y-%m-%d"),
@@ -746,8 +747,8 @@ CREATE TABLE IF NOT EXISTS global_directives (
   dos_id TEXT NOT NULL DEFAULT '5624755',
   physical_address TEXT NOT NULL DEFAULT '105 E 117th St Apt 5F, New York, NY 10035',
   mailing_address TEXT NOT NULL DEFAULT 'PO Box 997, New York, NY 10018',
-  naics_codes TEXT[] NOT NULL DEFAULT '{541511,541519,541512}',
-  it_framework JSONB NOT NULL DEFAULT '{"remote_delivery": true, "clearance_required": false, "section_508_specialty": true, "contract_types": ["FFP","T&M","IDIQ"]}',
+  naics_codes TEXT[] NOT NULL DEFAULT '{561210,561720,561730}',
+  it_framework JSONB NOT NULL DEFAULT '{"zero_float": true, "davis_bacon_excluded": true, "clearance_required": false, "contract_types": ["FFP","IDIQ"]}',
   cage_code TEXT DEFAULT 'PENDING',
   sam_status TEXT DEFAULT 'PENDING',
   updated_at TIMESTAMPTZ DEFAULT NOW()
@@ -1053,14 +1054,14 @@ class Section2(BaseModel):
     section_508_required: bool = Field(description="Does the solicitation require Section 508 / WCAG accessibility compliance? (positive signal)")
 
 class Section3(BaseModel):
-    primary_naics: str = Field(description="The 6-digit NAICS code (541511, 541519, 541512, or closest match).")
-    primary_deliverable_type: str = Field(description="Primary deliverable: WEB_DEV, SOFTWARE, IT_SUPPORT, CONSULTING, DESIGN, DATA_SERVICES, or OTHER.")
+    primary_naics: str = Field(description="The 6-digit NAICS code (561210, 561720, 561730, or closest match).")
+    primary_deliverable_type: str = Field(description="Primary deliverable: JANITORIAL, LANDSCAPING, FACILITIES_MGMT, GROUNDS_MAINTENANCE, BASE_SUPPORT, CUSTODIAL, or OTHER.")
     estimated_labor_hours: int = Field(description="Estimated total labor hours if discernible from the SOW, else 0.")
 
 class TriageAdjudication(BaseModel):
-    feasibility_score: int = Field(description="Score 1-10. 9-10: SB set-aside + remote + clear IT scope. 7-8: competitive but winnable. 5-6: on-site or moderate clearance. 1-4: TS clearance/hardware/non-IT.")
+    feasibility_score: int = Field(description="Score 1-10. 9-10: SB/8(a) set-aside + FFP + recurring service + no clearance. 7-8: competitive but manageable scope. 5-6: on-site specific requirements or moderate compliance burden. 1-4: Davis-Bacon, bonding, clearance, or non-service scope.")
     decision: str = Field(description="PROCEED, REVIEW, or REJECT.")
-    reasoning: str = Field(description="Two-sentence justification referencing BCG's IT capabilities.")
+    reasoning: str = Field(description="Two-sentence justification referencing BCG's Zero-Float facilities management model.")
 
 class TriageReport(BaseModel):
     solicitation_id: str
@@ -1214,32 +1215,33 @@ async def analyze_solicitation(request: TriageRequest, _: None = Depends(_requir
         gemini_file = client.files.upload(file=temp_pdf_path)
         system_instruction = """
         You are the Lead Procurement Compliance Director for Burger Consulting LLC,
-        a federal IT services prime contractor specializing in:
-        - NAICS 541511: Custom Computer Programming (web development, UI/UX, software)
-        - NAICS 541519: Other Computer Related Services (IT project management, IT support, consulting)
-        - NAICS 541512: Computer Systems Design (systems architecture, UX design, cloud services)
+        a federal facilities services prime contractor specializing in:
+        - NAICS 561210: Facilities Support Services (building operations, maintenance management, base support)
+        - NAICS 561720: Janitorial Services (commercial cleaning, custodial, sanitization)
+        - NAICS 561730: Landscaping Services (grounds maintenance, lawn care, snow removal)
 
-        Evaluate this solicitation under the IT Services Feasibility Framework:
+        Evaluate this solicitation under the Zero-Float Feasibility Framework:
 
         ACCEPT (score 7-10) if:
-        - Work can be performed remotely by developers or IT professionals
-        - Deliverables are clearly defined (software, code, documentation, systems, reports)
-        - No active security clearance above Public Trust required
-        - Section 508 accessibility compliance required (positive signal — differentiator)
-        - Small business set-aside or simplified acquisition threshold
-        - Scope aligns with software development, IT consulting, web services, or system design
+        - Scope is janitorial, custodial, facilities management, landscaping, grounds maintenance, or base support
+        - Firm-Fixed-Price (FFP) or performance-based service contract
+        - Small business or 8(a) set-aside eligible
+        - Recurring/evergreen contract (monthly or annual performance period)
+        - No upfront capital expenditures required (equipment, materials purchased by agency)
+        - Subcontracting permitted — work can be delegated to approved vendors
 
         REJECT (score 1-4) if:
-        - SECRET, TS, or TS/SCI clearance required for all personnel
-        - Hardware manufacturing or physical equipment installation is the primary scope
-        - Requires specialized classified facilities or SCIFs
-        - Subcontracting explicitly prohibited
-        - Scope is entirely outside IT services
+        - Construction, renovation, or major repair (requires bonding, surety, upfront materials)
+        - Davis-Bacon Act certified payroll required (incompatible with Zero-Float model)
+        - Security clearances required for all field staff
+        - Non-FFP billing structure (T&M, cost-plus, CPFF)
+        - Equipment procurement is primary deliverable (not service)
+        - Scope is entirely outside facilities, janitorial, or landscaping services
 
-        SCORE 9-10: Small business set-aside + remote delivery + clear IT deliverables + under $500K
-        SCORE 7-8: Competitive but manageable scope + clear IT deliverables
-        SCORE 5-6: On-site required or moderate clearance but IT-compatible scope
-        SCORE 1-4: TS clearance, ITAR, hardware-only, or non-IT scope
+        SCORE 9-10: SB/8(a) set-aside + FFP + recurring service + no clearance + under $250K
+        SCORE 7-8: Competitive but manageable scope + clear service deliverables
+        SCORE 5-6: On-site specific requirements or moderate compliance burden but FFP-compatible
+        SCORE 1-4: Davis-Bacon, construction bonding, clearance, or non-service primary scope
 
         Return strict JSON matching the provided schema.
         """
@@ -1686,10 +1688,10 @@ async def evaluate_quotes_ai(solicitation_id: str, _: None = Depends(_require_ad
         for i, r in enumerate(quotes)
     ])
 
-    prompt = f"""You are the Chief Procurement Officer for Burger Consulting LLC, a federal IT services prime contractor
-specializing in NAICS 541511, 541519, 541512 (custom programming, IT services, systems design).
+    prompt = f"""You are the Chief Procurement Officer for Burger Consulting LLC, a federal facilities prime contractor
+operating under the Zero-Float doctrine. NAICS: 561210 (Facilities Support), 561720 (Janitorial), 561730 (Landscaping).
 
-Evaluate IT subcontractor quotes for solicitation {solicitation_id}
+Evaluate subcontractor quotes for solicitation {solicitation_id}
 (Agency: {sol[1] if sol else 'TBD'}, NAICS: {sol[2] if sol else 'TBD'},
 Est. Value: ${sol[3] or 0:,.0f}, Deliverable Type: {deliverable_type}).
 
@@ -1698,15 +1700,15 @@ SUBCONTRACTOR QUOTES:
 
 Evaluate and return a JSON object with:
 - "ranked_quotes": array of objects with vendor_name, rank (1=best), recommendation (AWARD/PROCEED/CLARIFY/REJECT),
-  rationale (one sentence), risk_flags (array of strings), section_508_capable (bool),
-  technical_fit_score (1-10 based on skills match to deliverable type)
+  rationale (one sentence), risk_flags (array of strings), pay_when_paid_accepted (bool),
+  insurance_compliant (bool), mobilization_readiness_score (1-10)
 - "recommended_vendor": name of top choice
-- "recommended_award_price": suggested prime contract price (vendor total + 15-20% margin)
-- "evaluation_summary": 2-3 sentence overall assessment of technical capability and pricing
-- "key_risks": array of top risks (Section 508 gaps, communication, timeline, clearance issues)
+- "recommended_award_price": suggested prime contract price (vendor total + 15-20% margin, Zero-Float compliant)
+- "evaluation_summary": 2-3 sentence overall assessment of compliance readiness and pricing
+- "key_risks": array of top risks (insurance gaps, mobilization timeline, Davis-Bacon exposure, pay-when-paid refusal)
 
-Be objective. Prioritize: Technical capability > Section 508 compliance > price > pay-when-paid > past performance.
-For IT work, a vendor with strong relevant skills at a slightly higher rate is preferable to a cheaper vendor without them."""
+Be objective. Prioritize: Pay-When-Paid acceptance > insurance compliance > mobilization speed > price > past performance.
+A vendor accepting Pay-When-Paid at a slightly higher rate is preferable to a cheaper vendor requiring net-30 upfront."""
 
     try:
         response = client.models.generate_content(
@@ -1795,19 +1797,19 @@ async def generate_proposal(request: ProposalGenerateRequest, _: None = Depends(
     target_price = request.target_price or (float(est_value) * 1.15 if est_value else None)
     triage_summary = json.dumps(triage_report or {}, indent=2)[:2000]
 
-    deliverable_type = "IT Services"
+    deliverable_type = "Facilities Services"
     section_508 = False
     if triage_report:
         scope = triage_report.get("section3_scope") or {}
-        deliverable_type = scope.get("primary_deliverable_type", "IT Services")
+        deliverable_type = scope.get("primary_deliverable_type", "Facilities Services")
         section_508 = (triage_report.get("section2_compliance") or {}).get("section_508_required", False)
 
     prompt = f"""You are the Chief Proposal Writer for Burger Consulting LLC (EIN: 84-3113166),
-a federal IT services prime contractor in New York City.
-NAICS codes: 541511 (Custom Computer Programming), 541519 (Other Computer Related Services), 541512 (Computer Systems Design).
-Principal: Timothy J. Burger — software engineer and UI/UX developer with expertise in web application development and Section 508 accessibility compliance.
+a federal facilities management prime contractor in New York City operating under the Zero-Float doctrine.
+NAICS codes: 561210 (Facilities Support Services), 561720 (Janitorial Services), 561730 (Landscaping Services).
+Principal: Timothy J. Burger — facilities management professional and federal subcontracting specialist with expertise in SCA compliance, pay-when-paid subcontract structures, and FFP performance-based service contracts.
 
-Write a complete, compelling federal proposal for the following IT services solicitation:
+Write a complete, compelling federal proposal for the following facilities services solicitation:
 
 SOLICITATION: {request.solicitation_id}
 AGENCY: {agency or 'Federal Agency'}

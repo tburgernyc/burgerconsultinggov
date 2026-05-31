@@ -5,7 +5,7 @@ import { useSession } from 'next-auth/react';
 import Link from 'next/link';
 import { PortalShell } from '@/components/PortalShell';
 
-const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+const API = '/api/vendor';
 
 type Rfq = { solicitation_id: string; agency: string; naics: string; estimated_value: number; status: string; response_deadline: string; };
 
