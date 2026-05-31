@@ -42,3 +42,5 @@ nginx/certbot/www/
 .gitconfig
 .claude.json
 .claude/
+backups/
+upgrade.log
