@@ -464,3 +464,6 @@ tbody td { padding: 0.75rem 1rem; color: var(--text); }
   .pv-page-header { padding: 1.25rem 1.5rem 1rem; }
   .pv-page-content { padding: 1.25rem 1.5rem; }
 }
+
+.footer-link { color: rgba(255,255,255,0.55); font-size: 0.85rem; text-decoration: none; transition: color 0.15s; display: block; }
+.footer-link:hover { color: var(--gold); text-decoration: none; }

@@ -1,114 +1,186 @@
-export default function HomePage() {
-  const cageCode = process.env.CAGE_CODE || 'PENDING';
-  const samStatus = process.env.SAM_STATUS || 'REGISTRATION_IN_PROGRESS';
+import Image from 'next/image';
+import Link from 'next/link';
 
+export const metadata = {
+  title: 'Burger Consulting LLC — Federal Facilities Services',
+  description: 'SBA-registered small business delivering professional facilities support, janitorial, and landscaping services to U.S. federal agencies. NAICS 561210, 561720, 561730.',
+};
+
+const cageCode = process.env.CAGE_CODE || 'PENDING';
+
+export default function HomePage() {
   return (
     <>
-      <section className="hero">
-        <div className="container">
-          <h1>BURGER CONSULTING LLC</h1>
-          <div className="tagline">Federal Procurement Project Management Office</div>
-          <div className="sub">
-            Zero-Float B2G federal contract execution. NAICS 561210 · 561720 · 561730.
-            Facilities support, janitorial services, and landscaping for federal agencies.
-          </div>
-          <div className="ctas">
-            <a href="/vendor-portal" className="btn btn-primary btn-lg">Vendor Partnership Portal</a>
-            <a href="/capabilities" className="btn btn-outline btn-lg">Download Capabilities Statement</a>
-          </div>
-          <div className="cred-grid">
-            <div className="cred-item">
-              <div className="cred-label">Legal Entity</div>
-              <div className="cred-value">BURGER CONSULTING LLC</div>
-            </div>
-            <div className="cred-item">
-              <div className="cred-label">EIN</div>
-              <div className="cred-value">84-3113166</div>
-            </div>
-            <div className="cred-item">
-              <div className="cred-label">NY DOS ID</div>
-              <div className="cred-value">5624755</div>
-            </div>
-            <div className="cred-item">
-              <div className="cred-label">CAGE Code</div>
-              <div className="cred-value">{cageCode}</div>
-            </div>
-            <div className="cred-item">
-              <div className="cred-label">SBA Status</div>
-              <div className="cred-value">Small Business</div>
-            </div>
-            <div className="cred-item">
-              <div className="cred-label">SAM.gov Status</div>
-              <div className="cred-value" style={{ fontSize: '0.8rem' }}>{samStatus.replace(/_/g, ' ')}</div>
-            </div>
-          </div>
+      {/* ── Hero ── */}
+      <section style={{ position: 'relative', background: 'var(--navy)', color: '#fff', padding: '6rem 0 5rem', overflow: 'hidden' }}>
+        {/* Background image overlay */}
+        <div style={{ position: 'absolute', inset: 0, zIndex: 0 }}>
+          <Image
+            src="https://images.unsplash.com/photo-1555448248-2571daf6344b?auto=format&fit=crop&w=1920&q=60"
+            alt=""
+            fill
+            style={{ objectFit: 'cover', objectPosition: 'center' }}
+            priority
+          />
+          <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(135deg, rgba(8,17,31,0.93) 0%, rgba(10,22,40,0.88) 60%, rgba(19,34,56,0.80) 100%)' }} />
         </div>
-      </section>
+        {/* Subtle grid overlay */}
+        <div style={{ position: 'absolute', inset: 0, zIndex: 1, opacity: 0.03, backgroundImage: 'repeating-linear-gradient(0deg,#C9A84C 0,#C9A84C 1px,transparent 1px,transparent 80px),repeating-linear-gradient(90deg,#C9A84C 0,#C9A84C 1px,transparent 1px,transparent 80px)' }} />
 
-      <section className="section">
-        <div className="container">
-          <h2 className="section-title">Core Capabilities</h2>
-          <div className="section-divider"></div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1.5rem' }}>
-            {capabilities.map((cap) => (
-              <div key={cap.naics} className="card card-gold">
-                <div style={{ color: 'var(--gold)', fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.5rem' }}>
-                  NAICS {cap.naics}
-                </div>
-                <h3 style={{ fontSize: '1.1rem', color: 'var(--navy)', marginBottom: '0.5rem' }}>{cap.title}</h3>
-                <p style={{ color: 'var(--muted)', fontSize: '0.875rem', lineHeight: 1.6 }}>{cap.desc}</p>
-              </div>
-            ))}
+        <div className="container" style={{ position: 'relative', zIndex: 2 }}>
+          <div style={{ display: 'inline-block', background: 'rgba(201,168,76,0.12)', border: '1px solid rgba(201,168,76,0.3)', borderRadius: 4, padding: '0.3rem 0.875rem', fontSize: '0.68rem', fontWeight: 800, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--gold)', marginBottom: '1.25rem' }}>
+            SBA Small Business · Federally Registered
           </div>
-        </div>
-      </section>
-
-      <section className="section" style={{ background: 'var(--navy)', color: 'var(--white)' }}>
-        <div className="container">
-          <h2 className="section-title" style={{ color: 'var(--gold)' }}>Zero-Float Doctrine</h2>
-          <div className="section-divider"></div>
-          <p style={{ color: 'rgba(255,255,255,0.8)', maxWidth: 700, lineHeight: 1.7, marginBottom: '2rem' }}>
-            Burger Consulting operates under a strict Zero-Float procurement model. We reject any solicitation
-            that requires upfront capital mobilization, Davis-Bacon certified payroll, security clearances,
-            or billing structures incompatible with Firm-Fixed-Price execution.
+          <h1 style={{ fontFamily: "'DM Serif Display', serif", fontSize: 'clamp(2.25rem, 5vw, 3.75rem)', fontWeight: 400, lineHeight: 1.1, marginBottom: '1rem', maxWidth: 720 }}>
+            Federal Facilities Services,<br />Professionally Managed.
+          </h1>
+          <p style={{ fontSize: '1.05rem', color: 'rgba(255,255,255,0.72)', maxWidth: 580, lineHeight: 1.7, marginBottom: '2.5rem' }}>
+            Burger Consulting LLC delivers facilities support, janitorial, and landscaping services to U.S. government agencies under firm-fixed-price contracts — on time, on budget, and fully FAR compliant.
           </p>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
-            {zeroFloat.map((item) => (
-              <div key={item.label} style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(201,168,76,0.2)', borderRadius: 'var(--radius)', padding: '1rem' }}>
-                <div style={{ color: 'var(--gold)', fontSize: '1.5rem', marginBottom: '0.5rem' }}>{item.icon}</div>
-                <div style={{ fontWeight: 700, marginBottom: '0.25rem' }}>{item.label}</div>
-                <div style={{ color: 'rgba(255,255,255,0.65)', fontSize: '0.85rem' }}>{item.desc}</div>
+          <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+            <Link href="/vendor-portal" className="btn btn-primary btn-lg">Partner With Us</Link>
+            <Link href="/capabilities" className="btn btn-outline btn-lg">View Capabilities</Link>
+          </div>
+
+          {/* Credential Strip */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '0.75rem', marginTop: '4rem', maxWidth: 860 }}>
+            {[
+              { label: 'Entity', value: 'Burger Consulting LLC' },
+              { label: 'EIN', value: '84-3113166' },
+              { label: 'NY DOS ID', value: '5624755' },
+              { label: 'CAGE Code', value: cageCode },
+              { label: 'SBA Status', value: 'Small Business' },
+              { label: 'SAM.gov', value: 'Registered' },
+            ].map(item => (
+              <div key={item.label} style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(201,168,76,0.18)', borderRadius: 8, padding: '0.75rem 1rem' }}>
+                <div style={{ fontSize: '0.58rem', color: 'rgba(201,168,76,0.65)', textTransform: 'uppercase', letterSpacing: '0.12em', fontWeight: 700, marginBottom: '0.25rem' }}>{item.label}</div>
+                <div style={{ fontSize: '0.875rem', fontWeight: 700, color: '#fff' }}>{item.value}</div>
               </div>
             ))}
           </div>
         </div>
       </section>
 
-      <section className="section">
-        <div className="container" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '3rem', alignItems: 'center' }}>
-          <div>
-            <h2 className="section-title">Partner With Us</h2>
-            <div className="section-divider"></div>
-            <p style={{ color: 'var(--muted)', lineHeight: 1.7, marginBottom: '1.5rem' }}>
-              We work with qualified subcontractors to execute federal facilities support contracts.
-              Our Pay-When-Paid model ensures you receive payment within 30 days of agency payment receipt.
+      {/* ── Core Services ── */}
+      <section className="section" style={{ background: '#fff' }}>
+        <div className="container">
+          <div style={{ textAlign: 'center', marginBottom: '3rem' }}>
+            <div style={{ fontSize: '0.68rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--gold)', marginBottom: '0.75rem' }}>Core Service Lines</div>
+            <h2 style={{ fontFamily: "'DM Serif Display', serif", fontSize: '2.25rem', color: 'var(--navy)', fontWeight: 400, marginBottom: '0.75rem' }}>
+              What We Deliver
+            </h2>
+            <p style={{ color: 'var(--muted)', maxWidth: 540, margin: '0 auto', fontSize: '0.95rem', lineHeight: 1.7 }}>
+              Three federally registered service lines. All executed under firm-fixed-price contracts with full FAR compliance.
             </p>
-            <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-              {partnerBenefits.map((b) => (
-                <li key={b} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--text)', fontSize: '0.9rem' }}>
-                  <span style={{ color: 'var(--success)', fontWeight: 800 }}>✓</span> {b}
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1.5rem' }}>
+            {services.map(svc => (
+              <div key={svc.naics} style={{ borderRadius: 16, overflow: 'hidden', boxShadow: '0 2px 12px rgba(10,22,40,0.08)', border: '1px solid #E4EAF6', display: 'flex', flexDirection: 'column' }}>
+                <div style={{ height: 220, position: 'relative', background: 'var(--navy)' }}>
+                  <Image src={svc.image} alt={svc.title} fill style={{ objectFit: 'cover' }} />
+                  <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(0deg, rgba(8,17,31,0.7) 0%, transparent 60%)' }} />
+                  <div style={{ position: 'absolute', bottom: '1rem', left: '1.25rem' }}>
+                    <span style={{ background: 'var(--gold)', color: 'var(--navy)', fontSize: '0.65rem', fontWeight: 800, padding: '0.2rem 0.6rem', borderRadius: 4, letterSpacing: '0.06em' }}>
+                      NAICS {svc.naics}
+                    </span>
+                  </div>
+                </div>
+                <div style={{ padding: '1.5rem', background: '#fff', flex: 1 }}>
+                  <h3 style={{ fontFamily: "'DM Serif Display', serif", fontSize: '1.2rem', color: 'var(--navy)', marginBottom: '0.625rem', fontWeight: 400 }}>{svc.title}</h3>
+                  <p style={{ color: 'var(--muted)', fontSize: '0.875rem', lineHeight: 1.65, marginBottom: '1rem' }}>{svc.desc}</p>
+                  <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                    {svc.bullets.map(b => (
+                      <li key={b} style={{ fontSize: '0.82rem', color: 'var(--text)', display: 'flex', alignItems: 'flex-start', gap: '0.5rem' }}>
+                        <span style={{ color: 'var(--gold)', fontWeight: 800, marginTop: '0.05rem', flexShrink: 0 }}>—</span>
+                        {b}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── Our Approach ── */}
+      <section className="section" style={{ background: 'var(--navy)', color: '#fff' }}>
+        <div className="container">
+          <div style={{ textAlign: 'center', marginBottom: '3rem' }}>
+            <div style={{ fontSize: '0.68rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--gold)', marginBottom: '0.75rem' }}>Why Choose Us</div>
+            <h2 style={{ fontFamily: "'DM Serif Display', serif", fontSize: '2.25rem', color: '#fff', fontWeight: 400, marginBottom: '0.75rem' }}>
+              Built for Federal Execution
+            </h2>
+            <p style={{ color: 'rgba(255,255,255,0.65)', maxWidth: 520, margin: '0 auto', fontSize: '0.95rem', lineHeight: 1.7 }}>
+              Our operating model is designed around the requirements of federal contracting — transparent, compliant, and accountable at every stage.
+            </p>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1.25rem' }}>
+            {approach.map(item => (
+              <div key={item.title} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(201,168,76,0.15)', borderRadius: 12, padding: '1.5rem' }}>
+                <div style={{ fontSize: '1.75rem', marginBottom: '0.875rem' }}>{item.icon}</div>
+                <div style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '0.4rem', color: '#fff' }}>{item.title}</div>
+                <div style={{ fontSize: '0.83rem', color: 'rgba(255,255,255,0.58)', lineHeight: 1.6 }}>{item.desc}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── Partner Section ── */}
+      <section className="section" style={{ background: '#fff' }}>
+        <div className="container" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4rem', alignItems: 'center' }}>
+          <div>
+            <div style={{ fontSize: '0.68rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--gold)', marginBottom: '0.875rem' }}>Subcontractor Partners</div>
+            <h2 style={{ fontFamily: "'DM Serif Display', serif", fontSize: '2rem', color: 'var(--navy)', fontWeight: 400, marginBottom: '1rem' }}>
+              Grow Your Business with Federal Contracts
+            </h2>
+            <p style={{ color: 'var(--muted)', lineHeight: 1.75, marginBottom: '1.5rem', fontSize: '0.95rem' }}>
+              We connect qualified subcontractors with federal agency opportunities they couldn&apos;t access alone. As the prime contractor, we handle all federal compliance and billing — you focus on delivering great service.
+            </p>
+            <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '2rem' }}>
+              {partnerBenefits.map(b => (
+                <li key={b} style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', fontSize: '0.9rem', color: 'var(--text)' }}>
+                  <span style={{ color: '#059669', fontWeight: 800, fontSize: '1rem', flexShrink: 0, marginTop: '0.05rem' }}>✓</span>
+                  {b}
                 </li>
               ))}
             </ul>
-            <a href="/vendor-portal" className="btn btn-primary" style={{ marginTop: '1.5rem' }}>Apply as Subcontractor</a>
+            <Link href="/vendor-portal" className="btn btn-primary" style={{ marginRight: '0.75rem' }}>Apply as Subcontractor</Link>
+            <Link href="/contact" className="btn btn-outline">Contact Us</Link>
           </div>
-          <div>
-            <div className="card" style={{ background: 'var(--navy)', color: 'var(--white)' }}>
-              <h3 style={{ color: 'var(--gold)', marginBottom: '1rem' }}>Compliance Snapshot</h3>
-              {compliance.map((item) => (
-                <div key={item.label} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.5rem 0', borderBottom: '1px solid rgba(255,255,255,0.08)', fontSize: '0.875rem' }}>
-                  <span style={{ color: 'rgba(255,255,255,0.75)' }}>{item.label}</span>
-                  <span style={{ color: 'var(--gold)', fontWeight: 700 }}>{item.value}</span>
+          <div style={{ position: 'relative' }}>
+            <div style={{ borderRadius: 16, overflow: 'hidden', boxShadow: '0 20px 60px rgba(10,22,40,0.15)' }}>
+              <Image
+                src="https://images.unsplash.com/photo-1600880292203-757bb62b4baf?auto=format&fit=crop&w=800&q=80"
+                alt="Professional business partnership"
+                width={700}
+                height={520}
+                style={{ display: 'block', width: '100%', height: 'auto' }}
+              />
+            </div>
+            {/* Credential badge overlay */}
+            <div style={{ position: 'absolute', bottom: '-1.5rem', left: '-1.5rem', background: 'var(--navy)', borderRadius: 12, padding: '1.125rem 1.5rem', boxShadow: '0 8px 32px rgba(10,22,40,0.2)' }}>
+              <div style={{ color: 'var(--gold)', fontSize: '0.65rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.3rem' }}>Payment Terms</div>
+              <div style={{ color: '#fff', fontFamily: "'DM Serif Display', serif", fontSize: '1.1rem' }}>Net-30 Guarantee</div>
+              <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.72rem', marginTop: '0.2rem' }}>From agency payment receipt</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── Trust Strip ── */}
+      <section style={{ background: 'var(--light)', borderTop: '1px solid var(--border)', borderBottom: '1px solid var(--border)', padding: '2.5rem 0' }}>
+        <div className="container">
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1.5rem' }}>
+            <div style={{ fontSize: '0.72rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--muted)' }}>
+              Registered &amp; Verified
+            </div>
+            <div style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap', alignItems: 'center' }}>
+              {trustItems.map(item => (
+                <div key={item.label} style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: '0.62rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--muted)', marginBottom: '0.2rem' }}>{item.label}</div>
+                  <div style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--navy)' }}>{item.value}</div>
                 </div>
               ))}
             </div>
@@ -116,15 +188,18 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section className="section" style={{ background: 'var(--light)', textAlign: 'center' }}>
+      {/* ── CTA ── */}
+      <section className="section" style={{ background: '#fff', textAlign: 'center' }}>
         <div className="container">
-          <h2 className="section-title">Ready to Execute</h2>
-          <p style={{ color: 'var(--muted)', maxWidth: 600, margin: '0.5rem auto 2rem', lineHeight: 1.7 }}>
-            Contracting officers and subcontractors — connect with our procurement team directly.
+          <h2 style={{ fontFamily: "'DM Serif Display', serif", fontSize: '2rem', color: 'var(--navy)', fontWeight: 400, marginBottom: '0.75rem' }}>
+            Ready to Work Together?
+          </h2>
+          <p style={{ color: 'var(--muted)', maxWidth: 500, margin: '0 auto 2rem', lineHeight: 1.7 }}>
+            Whether you&apos;re a contracting officer looking for a qualified prime, or a subcontractor ready to execute federal work — we&apos;re ready.
           </p>
           <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap' }}>
-            <a href="/contact" className="btn btn-navy btn-lg">Contact Procurement</a>
-            <a href="/capabilities" className="btn btn-outline btn-lg">View Full Capabilities</a>
+            <Link href="/contact" className="btn btn-navy btn-lg">Contact Procurement</Link>
+            <Link href="/capabilities" className="btn btn-outline btn-lg">View Capabilities</Link>
           </div>
         </div>
       </section>
@@ -132,32 +207,65 @@ export default function HomePage() {
   );
 }
 
-const capabilities = [
-  { naics: '561210', title: 'Facilities Support Services', desc: 'Comprehensive facilities management and support services for federal installations, including operations and maintenance coordination.' },
-  { naics: '561720', title: 'Janitorial Services', desc: 'Professional commercial cleaning and janitorial services for federal buildings and facilities, compliant with federal green cleaning standards.' },
-  { naics: '561730', title: 'Landscaping Services', desc: 'Full-service grounds maintenance and landscaping for federal properties, including mowing, snow removal, and seasonal services.' },
+const services = [
+  {
+    naics: '561210',
+    title: 'Facilities Support Services',
+    image: 'https://images.unsplash.com/photo-1486325212027-8081e485255e?auto=format&fit=crop&w=600&q=80',
+    desc: 'Comprehensive facilities management and support for federal installations, from operations coordination to maintenance oversight.',
+    bullets: [
+      'Operations scheduling and coordination',
+      'Building maintenance oversight',
+      'Vendor coordination and quality control',
+      'Compliance documentation management',
+    ],
+  },
+  {
+    naics: '561720',
+    title: 'Janitorial Services',
+    image: 'https://images.unsplash.com/photo-1581578731548-c64695cc6952?auto=format&fit=crop&w=600&q=80',
+    desc: 'Professional commercial cleaning services for federal buildings and facilities, compliant with GSA green cleaning standards.',
+    bullets: [
+      'Daily, weekly, and periodic cleaning schedules',
+      'GSA green cleaning product compliance',
+      'OSHA safety protocol adherence',
+      'Quality control inspections and reporting',
+    ],
+  },
+  {
+    naics: '561730',
+    title: 'Landscaping Services',
+    image: 'https://images.unsplash.com/photo-1416879595882-3373a0480b5b?auto=format&fit=crop&w=600&q=80',
+    desc: 'Full-service grounds maintenance and landscaping for federal properties, maintained to the highest standards year-round.',
+    bullets: [
+      'Lawn maintenance and seasonal mowing',
+      'Snow and ice removal services',
+      'Seasonal planting, mulching, and bed care',
+      'Irrigation system monitoring',
+    ],
+  },
 ];
 
-const zeroFloat = [
-  { icon: '⚡', label: 'No Upfront Capital', desc: 'FFP execution only — no mobilization capital required' },
-  { icon: '📋', label: 'FAR Compliant', desc: 'Full Federal Acquisition Regulation compliance' },
-  { icon: '🏢', label: 'No Clearances Required', desc: 'NAICS codes do not require personnel clearances' },
-  { icon: '💰', label: 'Net-30 Pay Cycle', desc: 'Vendor payment within 30 days of agency receipt' },
+const approach = [
+  { icon: '📋', title: 'FAR Compliant', desc: 'Full Federal Acquisition Regulation compliance on every engagement — FAR Parts 9, 19, 52, and applicable service contract clauses.' },
+  { icon: '📄', title: 'Firm-Fixed-Price', desc: 'All contracts structured as FFP — predictable costs and no surprises for agency contracting officers or our subcontractor partners.' },
+  { icon: '🏢', title: 'Dedicated PMO', desc: 'A dedicated project management office handles solicitation review, vendor coordination, and contract administration from award through close-out.' },
+  { icon: '💰', title: 'Net-30 Payment', desc: 'Subcontractor payments released within 30 days of confirmed agency receipt — transparent, predictable, and contractually committed.' },
 ];
 
 const partnerBenefits = [
-  'Net-30 payment after agency receipt — transparent timeline',
-  'Digital quote submission through the vendor portal',
-  'No paper-chasing — all documents managed online',
-  'Real-time contract status and invoice tracking',
-  'Automated insurance expiry alerts and reminders',
+  'Access to federal contract opportunities matched to your service capabilities',
+  'We handle all federal paperwork, compliance, and billing — you execute',
+  'Digital quote submission, invoicing, and status tracking via our online portal',
+  'Payment within 30 days of agency receipt — no delay, no excuses',
+  'Long-term partnership with repeat opportunities as your track record grows',
 ];
 
-const compliance = [
-  { label: 'SBA Designation', value: 'Small Business Entity' },
-  { label: 'Primary NAICS', value: '561210' },
-  { label: 'SAM.gov Registration', value: 'Active' },
+const trustItems = [
+  { label: 'SBA Status', value: 'Small Business Entity' },
+  { label: 'SAM.gov', value: 'Registered' },
   { label: 'Contract Type', value: 'Firm Fixed Price' },
-  { label: 'Payment Terms', value: 'Net-30 (Pay-When-Paid)' },
-  { label: 'Subcontracting', value: 'Permitted' },
+  { label: 'Primary NAICS', value: '561210' },
+  { label: 'Set-Asides', value: 'SB Eligible' },
+  { label: 'Jurisdiction', value: 'New York State' },
 ];
