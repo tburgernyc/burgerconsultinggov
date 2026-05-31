@@ -1,6 +1,6 @@
 # Burger Consulting LLC — Build Continuation Guide
-**Last updated: 2026-05-29**
-**Status: ALL 17 PHASES COMPLETE — 3 containers running**
+**Last updated: 2026-05-31**
+**Status: ALL 17 PHASES COMPLETE + NAICS/PROXY FIXES — 5 containers running**
 
 ---
 
@@ -11,8 +11,10 @@
 | `hermes_db` | PostgreSQL 16 + pgvector | 5432 | RUNNING |
 | `hermes_backend` | FastAPI + Gemini AI + Resend + APScheduler | 8000 | RUNNING |
 | `burger_frontend` | Next.js 16 (production build) | 3000 | RUNNING |
+| `hermes_nginx` | Nginx reverse proxy + SSL termination | 80/443 | RUNNING |
+| `certbot_cron` | Let's Encrypt auto-renewal | — | RUNNING |
 
-All three are on network: `burger_consulting_hermes_net`
+All containers on network: `t_burgernyc_hermes_net`
 
 Check status:
 ```bash
@@ -44,19 +46,33 @@ APScheduler running inside the FastAPI process (no separate container needed):
 ### Phase 17 — Frontend Docker Container ✅
 `burger_frontend` container running on port 3000. Production Next.js build.
 
+### Phase 18 — NAICS Correction + Vendor Portal Proxy ✅ (2026-05-31)
+Fixed systemic NAICS mismatch: all 541xxx IT codes replaced with 561210/561720/561730
+facilities codes across backend (SAM.gov scan, USASpending intelligence, DB schema,
+Gemini triage/quote/proposal prompts). Added `/api/vendor/[...path]` authenticated
+proxy route so portal pages call the backend through session-validated Next.js middleware
+instead of directly via `NEXT_PUBLIC_API_URL`.
+
 ---
 
-## ONE REMAINING ACTION — Resend Domain Verification
+## REMAINING ACTIONS
 
-The Resend API key is live and making calls, but emails are blocked until the domain is verified.
+### Action 1 — Resend Domain Verification (external — you must do this)
+The Resend API key is live but emails are blocked until the domain is verified.
 
 **Error seen in logs:** `[EMAIL ERROR] The burgergov.com domain is not verified`
 
-**How to fix:**
 1. Log into https://resend.com/domains
 2. Add domain: `burgergov.com`
 3. Add the DNS records Resend provides to your domain registrar
 4. Once verified, all 5 email templates will fire automatically
+
+### Action 2 — SAM.gov API Key (external — you must do this)
+Add real `SAM_API_KEY` to `.env` to activate the 7AM SAM.gov cron scan for NAICS 561210/561720/561730 opportunities.
+Without this, the morning brief won't populate with new solicitations from SAM.
+
+### Action 3 — CAGE Code (external — pending SAM.gov activation)
+Update `CAGE_CODE` in `.env` once assigned via SAM.gov registration.
 
 Until the domain is verified, email errors are logged but do NOT break any API responses.
 
