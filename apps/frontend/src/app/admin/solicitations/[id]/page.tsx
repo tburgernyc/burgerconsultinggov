@@ -2,11 +2,22 @@
 
 import { use, useEffect, useState } from 'react';
 import Link from 'next/link';
+import { AdminShell } from '@/components/AdminShell';
 
 const API = '/api/proxy';
 
+type Solicitation = { solicitation_id: string; agency: string; naics: string; estimated_value: number; triage_score: number; status: string; response_deadline: string; };
+type Quote = { id: string; vendor_id: string; vendor_name: string; total_amount: number; labor_rate_hourly: number; pay_when_paid_confirmed: boolean; recommendation: string; status: string; notes: string; ai_evaluation?: { rank?: number; rationale?: string; risk_flags?: string[]; sca_compliant?: boolean; }; };
 type AiEval = { recommended_vendor: string; recommended_award_price: number; evaluation_summary: string; key_risks: string[]; };
 
+const fmt = (n: number) => '$' + Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 0 });
+
+function recBadge(r: string) {
+  if (r === 'AWARD' || r === 'PROCEED') return 'pv-badge-green';
+  if (r === 'CLARIFY') return 'pv-badge-gold';
+  if (r === 'REJECT') return 'pv-badge-red';
+  return 'pv-badge-gray';
+}
 
 export default function SolicitationDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -46,101 +57,123 @@ export default function SolicitationDetailPage({ params }: { params: Promise<{ i
       setAiEval(d.evaluation);
       const updated = await fetch(`${API}/api/quotes/${id}`).then(x => x.json());
       setQuotes(Array.isArray(updated) ? updated : []);
-    } finally {
-      setEvaluating(false);
-    }
+    } finally { setEvaluating(false); }
   }
 
   async function generateProposal() {
     setGenerating(true);
     try {
       const r = await fetch(`${API}/api/proposals/generate`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ solicitation_id: id }),
       });
       if (!r.ok) { alert(`Proposal generation failed (${r.status})`); return; }
       setProposalDone(true);
-    } finally {
-      setGenerating(false);
-    }
+    } finally { setGenerating(false); }
   }
 
   return (
-    <div>
-      <div style={{ marginBottom: '1.5rem' }}>
-        <Link href="/admin/solicitations" style={{ color: 'var(--muted)', fontSize: '0.875rem' }}>← Back to Pipeline</Link>
-        <h1 style={{ fontSize: '1.5rem', color: 'var(--navy)', margin: '0.5rem 0' }}>{id}</h1>
-      </div>
-      {sol ? (
-        <>
-          <div className="card card-gold" style={{ marginBottom: '1.5rem' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '1rem' }}>
-              {[['Agency', sol.agency || '—'], ['NAICS', sol.naics || '—'], ['Est. Value', sol.estimated_value ? `$${Number(sol.estimated_value).toLocaleString()}` : '—'], ['Triage Score', sol.triage_score ?? 'Not Run'], ['Status', sol.status || '—']].map(([l, v]) => (
-                <div key={l}><div style={{ fontSize: '0.7rem', color: 'var(--muted)', textTransform: 'uppercase', fontWeight: 600 }}>{l}</div><div style={{ fontWeight: 700 }}>{v}</div></div>
+    <AdminShell
+      title={id}
+      subtitle={sol ? `${sol.agency} · ${sol.status?.replace(/_/g,' ')}` : 'Loading…'}
+      actions={
+        <Link href="/admin/solicitations" className="pv-btn pv-btn-outline pv-btn-sm">← Pipeline</Link>
+      }
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+
+        {/* Details Card */}
+        {sol && (
+          <div className="pv-card pv-card-gold-border pv-fade">
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '1.125rem', marginBottom: '1.5rem' }}>
+              {[
+                ['Agency', sol.agency || '—'],
+                ['NAICS', sol.naics || '—'],
+                ['Est. Value', sol.estimated_value ? fmt(sol.estimated_value) : '—'],
+                ['Triage Score', sol.triage_score != null ? `${sol.triage_score}/10` : 'Not Run'],
+                ['Status', (sol.status || '').replace(/_/g,' ')],
+                ['Deadline', sol.response_deadline ? new Date(sol.response_deadline).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—'],
+              ].map(([l, v]) => (
+                <div key={l}>
+                  <div style={{ fontSize: '0.62rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--pv-muted)', fontFamily: "'DM Sans', sans-serif", marginBottom: '0.2rem' }}>{l}</div>
+                  <div style={{ fontWeight: 700, color: 'var(--pv-text)', fontFamily: "'DM Sans', sans-serif" }}>{v}</div>
+                </div>
               ))}
             </div>
-          </div>
-          <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
-            <button onClick={triggerTriage} className="btn btn-primary btn-sm">Run Triage</button>
-            <button onClick={triggerSourcing} className="btn btn-navy btn-sm">Trigger Sourcing</button>
-            <button onClick={evaluateQuotesAI} disabled={evaluating || quotes.length === 0} className="btn btn-outline btn-sm">
-              {evaluating ? 'Evaluating...' : '🤖 AI Evaluate Quotes'}
-            </button>
-            <button onClick={generateProposal} disabled={generating} className="btn btn-outline btn-sm">
-              {generating ? 'Generating...' : '✨ Generate Proposal'}
-            </button>
-            {proposalDone && (
-              <Link href="/admin/proposals" className="btn btn-success btn-sm">View Proposal →</Link>
-            )}
-          </div>
 
-          {aiEval && (
-            <div className="card" style={{ marginBottom: '1.5rem', border: '1px solid #c7d2fe' }}>
-              <h3 style={{ color: '#1d4ed8', marginBottom: '0.5rem', fontSize: '0.95rem' }}>🤖 AI Quote Evaluation</h3>
-              <p style={{ fontSize: '0.875rem', color: 'var(--text)', marginBottom: '0.5rem' }}>{aiEval.evaluation_summary}</p>
-              <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', fontSize: '0.8rem' }}>
-                <div><span style={{ color: 'var(--muted)' }}>Recommended Vendor:</span> <strong>{aiEval.recommended_vendor}</strong></div>
-                {aiEval.recommended_award_price && (
-                  <div><span style={{ color: 'var(--muted)' }}>Suggested Price:</span> <strong>${Number(aiEval.recommended_award_price).toLocaleString()}</strong></div>
-                )}
-              </div>
-              {aiEval.key_risks?.length > 0 && (
-                <div style={{ marginTop: '0.5rem', fontSize: '0.8rem', color: '#991b1b' }}>
-                  Risks: {aiEval.key_risks.join(' · ')}
-                </div>
-              )}
+            {/* Action Toolbar */}
+            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', paddingTop: '1rem', borderTop: '1px solid var(--pv-border)' }}>
+              <button onClick={triggerTriage} className="pv-btn pv-btn-primary pv-btn-sm">Run Triage</button>
+              <button onClick={triggerSourcing} className="pv-btn pv-btn-navy pv-btn-sm">Trigger Sourcing</button>
+              <button onClick={evaluateQuotesAI} disabled={evaluating || quotes.length === 0} className="pv-btn pv-btn-outline pv-btn-sm">
+                {evaluating ? 'Evaluating…' : '🤖 AI Evaluate Quotes'}
+              </button>
+              <button onClick={generateProposal} disabled={generating} className="pv-btn pv-btn-outline pv-btn-sm">
+                {generating ? 'Generating…' : '✦ Generate Proposal'}
+              </button>
+              {proposalDone && <Link href="/admin/proposals" className="pv-btn pv-btn-sm" style={{ background: 'var(--pv-success)', color: '#fff', border: '1.5px solid var(--pv-success)' }}>View Proposal →</Link>}
             </div>
-          )}
-        </>
-      ) : <p style={{ color: 'var(--muted)' }}>Solicitation not found.</p>}
-
-      <section>
-        <h2 style={{ fontSize: '1.1rem', color: 'var(--navy)', marginBottom: '1rem' }}>Vendor Quotes ({quotes.length})</h2>
-        {quotes.length === 0 ? <div className="empty-state">No quotes received yet.</div> : (
-          <div className="table-wrapper">
-            <table>
-              <thead><tr><th>Vendor</th><th>Amount</th><th>Labor Rate</th><th>PWP</th><th>AI Rank</th><th>Recommendation</th><th>Status</th></tr></thead>
-              <tbody>
-                {quotes.map(q => (
-                  <tr key={q.id} style={{ background: q.ai_evaluation?.rank === 1 ? '#f0fdf4' : undefined }}>
-                    <td>{q.vendor_name || q.vendor_id}</td>
-                    <td>${Number(q.total_amount || 0).toLocaleString()}</td>
-                    <td>{q.labor_rate_hourly ? `$${q.labor_rate_hourly}/hr` : '—'}</td>
-                    <td><span className={`badge ${q.pay_when_paid_confirmed ? 'badge-green' : 'badge-red'}`}>{q.pay_when_paid_confirmed ? 'Yes' : 'No'}</span></td>
-                    <td>{q.ai_evaluation?.rank ? <span className="badge badge-blue">#{q.ai_evaluation.rank}</span> : '—'}</td>
-                    <td><span className={`badge ${q.recommendation === 'AWARD' || q.recommendation === 'PROCEED' ? 'badge-green' : q.recommendation === 'CLARIFY' ? 'badge-yellow' : q.recommendation === 'REJECT' ? 'badge-red' : 'badge-gray'}`}>{q.recommendation || 'PENDING'}</span></td>
-                    <td><span className="badge badge-blue">{q.status}</span></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
           </div>
         )}
-      </section>
-    </div>
+
+        {/* AI Evaluation */}
+        {aiEval && (
+          <div className="pv-card pv-fade" style={{ borderLeft: '4px solid #3B82F6' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.875rem' }}>
+              <span style={{ fontSize: '1.1rem' }}>🤖</span>
+              <span style={{ fontFamily: "'DM Serif Display', serif", fontSize: '1.05rem', color: 'var(--pv-text)' }}>AI Quote Evaluation</span>
+              {aiEval.recommended_vendor && <span className="pv-badge pv-badge-green" style={{ marginLeft: 'auto' }}>→ {aiEval.recommended_vendor}</span>}
+              {aiEval.recommended_award_price > 0 && <span className="pv-badge pv-badge-navy">{fmt(aiEval.recommended_award_price)}</span>}
+            </div>
+            <p style={{ fontSize: '0.875rem', color: 'var(--pv-text-mid)', lineHeight: 1.65, marginBottom: '0.75rem', fontFamily: "'DM Sans', sans-serif" }}>
+              {aiEval.evaluation_summary}
+            </p>
+            {aiEval.key_risks?.length > 0 && (
+              <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                {aiEval.key_risks.map((r, i) => <span key={i} className="pv-badge pv-badge-red" style={{ fontSize: '0.65rem' }}>⚠ {r}</span>)}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Quotes */}
+        <div className="pv-fade pv-d1">
+          <div className="pv-section-label">Vendor Quotes ({quotes.length})</div>
+          {quotes.length === 0 ? (
+            <div className="pv-card">
+              <div className="pv-empty">
+                <div className="pv-empty-icon">📋</div>
+                <div className="pv-empty-title">No quotes received yet</div>
+                <p style={{ fontSize: '0.82rem', color: 'var(--pv-muted)' }}>Trigger sourcing to send RFQ emails to matched vendors.</p>
+              </div>
+            </div>
+          ) : (
+            <div className="pv-card" style={{ padding: 0, overflow: 'hidden' }}>
+              <div className="pv-table-wrap">
+                <table className="pv-table">
+                  <thead>
+                    <tr><th>Vendor</th><th>Amount</th><th>Labor Rate</th><th>PWP</th><th>AI Rank</th><th>Recommendation</th><th>Notes</th></tr>
+                  </thead>
+                  <tbody>
+                    {quotes.map(q => (
+                      <tr key={q.id} style={{ background: q.ai_evaluation?.rank === 1 ? 'var(--pv-success-bg)' : undefined }}>
+                        <td style={{ fontWeight: 700 }}>{q.vendor_name || q.vendor_id}</td>
+                        <td style={{ fontWeight: 700, color: 'var(--pv-navy)' }}>{fmt(q.total_amount)}</td>
+                        <td style={{ color: 'var(--pv-text-mid)' }}>{q.labor_rate_hourly ? `$${q.labor_rate_hourly}/hr` : '—'}</td>
+                        <td><span className={`pv-badge ${q.pay_when_paid_confirmed ? 'pv-badge-green' : 'pv-badge-red'}`}>{q.pay_when_paid_confirmed ? 'Yes' : 'No'}</span></td>
+                        <td>{q.ai_evaluation?.rank ? <span className="pv-badge pv-badge-blue">#{q.ai_evaluation.rank}</span> : '—'}</td>
+                        <td><span className={`pv-badge ${recBadge(q.recommendation)}`}>{q.recommendation || 'PENDING'}</span></td>
+                        <td style={{ fontSize: '0.75rem', color: 'var(--pv-muted)', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{q.notes || '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+
+      </div>
+    </AdminShell>
   );
 }
-
-type Solicitation = { solicitation_id: string; agency: string; naics: string; estimated_value: number; triage_score: number; status: string; response_deadline: string; };
-type Quote = { id: string; vendor_id: string; vendor_name: string; total_amount: number; labor_rate_hourly: number; pay_when_paid_confirmed: boolean; recommendation: string; status: string; ai_evaluation?: { rank?: number; rationale?: string; risk_flags?: string[]; sca_compliant?: boolean; }; };

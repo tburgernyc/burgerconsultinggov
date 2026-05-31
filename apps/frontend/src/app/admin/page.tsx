@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { AdminShell } from '@/components/AdminShell';
 
 const API = '/api/proxy';
 
@@ -11,11 +12,19 @@ type MorningBrief = {
   active_contract_health: ContractHealth[];
   financial_snapshot: { pipeline_value: number; projected_revenue_15pct: number; accounts_receivable: number; };
 };
-
 type Opportunity = { solicitation_id: string; agency: string; naics: string; estimated_value: number; triage_score: number; status: string; };
 type VendorApp = { id: string; legal_name: string; email: string; onboarding_status: string; hours_in_queue: number; };
 type Rfq = { solicitation_id: string; agency: string; triage_score: number; phase_status: string; };
 type ContractHealth = { contract_number: string; vendor_name: string; contract_value: number; total_invoiced: number; total_received: number; next_invoice_date: string; };
+
+const fmt = (n: number) => '$' + Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 0 });
+const today = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+
+function scoreColor(s: number): string {
+  if (s >= 8) return 'pv-badge-green';
+  if (s >= 6) return 'pv-badge-gold';
+  return 'pv-badge-red';
+}
 
 export default function AdminDashboard() {
   const [brief, setBrief] = useState<MorningBrief | null>(null);
@@ -23,151 +32,188 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     fetch(`${API}/api/admin/morning-brief`)
-      .then(r => r.json())
-      .then(setBrief)
-      .catch(() => setBrief(null))
-      .finally(() => setLoading(false));
+      .then(r => r.json()).then(setBrief).catch(() => setBrief(null)).finally(() => setLoading(false));
   }, []);
 
   async function approveVendor(id: string) {
     const res = await fetch(`${API}/api/admin/vendor/approve/${id}`, { method: 'POST' });
-    if (!res.ok) { alert(`Vendor approval failed (${res.status}). Please try again.`); return; }
+    if (!res.ok) { alert(`Vendor approval failed (${res.status})`); return; }
     window.location.reload();
   }
 
   async function approveRfq(id: string) {
     const res = await fetch(`${API}/api/sourcing/approve/${id}`, { method: 'POST' });
-    if (!res.ok) { alert(`RFQ dispatch failed (${res.status}). Please try again.`); return; }
+    if (!res.ok) { alert(`RFQ dispatch failed (${res.status})`); return; }
     window.location.reload();
   }
 
-  if (loading) return <div style={{ padding: '2rem', color: 'var(--muted)' }}>Loading morning brief...</div>;
-
   const fin = brief?.financial_snapshot;
+  const vendors = brief?.approval_queue?.vendor_applications || [];
+  const rfqs = brief?.approval_queue?.rfq_dispatch_queue || [];
+  const pendingCount = vendors.length + rfqs.length;
+  const opps = brief?.new_opportunities || [];
+  const contracts = brief?.active_contract_health || [];
 
   return (
-    <>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-        <div>
-          <h1 style={{ fontSize: '1.5rem', color: 'var(--navy)' }}>Morning Brief</h1>
-          <p style={{ color: 'var(--muted)', fontSize: '0.875rem' }}>{new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
+    <AdminShell
+      title="Morning Brief"
+      subtitle={today}
+      actions={<Link href="/admin/solicitations" className="pv-btn pv-btn-navy pv-btn-sm">Full Pipeline →</Link>}
+    >
+      {loading ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          {[1,2,3].map(i => <div key={i} style={{ height: 90, background: '#E4EAF6', borderRadius: 12 }} />)}
         </div>
-        <Link href="/admin/solicitations" className="btn btn-navy btn-sm">View Full Pipeline</Link>
-      </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
-        <div className="stat-card">
-          <div className="stat-label">Pipeline Value</div>
-          <div className="stat-value">${(fin?.pipeline_value || 0).toLocaleString()}</div>
-          <div className="stat-sub">Active solicitations</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-label">Projected Revenue</div>
-          <div className="stat-value">${(fin?.projected_revenue_15pct || 0).toLocaleString()}</div>
-          <div className="stat-sub">At 15% margin</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-label">Accounts Receivable</div>
-          <div className="stat-value">${(fin?.accounts_receivable || 0).toLocaleString()}</div>
-          <div className="stat-sub">Outstanding</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-label">New Opportunities</div>
-          <div className="stat-value">{brief?.new_opportunities?.length || 0}</div>
-          <div className="stat-sub">Last 24 hours</div>
-        </div>
-      </div>
+          {/* Financial Snapshot */}
+          <div>
+            <div className="pv-section-label">Financial Snapshot</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem' }}>
+              {[
+                { label: 'Pipeline Value', val: fmt(fin?.pipeline_value || 0), sub: 'Active solicitations', icon: '📊', accent: '#1E40AF' },
+                { label: 'Projected Revenue', val: fmt(fin?.projected_revenue_15pct || 0), sub: 'At 15% prime margin', icon: '📈', accent: 'var(--pv-success)' },
+                { label: 'Accounts Receivable', val: fmt(fin?.accounts_receivable || 0), sub: 'Outstanding invoices', icon: '⏳', accent: 'var(--pv-warning)' },
+                { label: 'New Opportunities', val: String(opps.length), sub: 'Last 24 hours from SAM', icon: '🔍', accent: 'var(--pv-gold)' },
+              ].map((card, i) => (
+                <div key={card.label} className={`pv-stat pv-fade pv-d${i + 1}`}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
+                    <div className="pv-stat-label">{card.label}</div>
+                    <span style={{ fontSize: '1.1rem' }}>{card.icon}</span>
+                  </div>
+                  <div className="pv-stat-value" style={{ color: card.accent }}>{card.val}</div>
+                  <div className="pv-stat-sub">{card.sub}</div>
+                </div>
+              ))}
+            </div>
+          </div>
 
-      {/* Approval Queue */}
-      {((brief?.approval_queue?.vendor_applications?.length || 0) + (brief?.approval_queue?.rfq_dispatch_queue?.length || 0)) > 0 && (
-        <section style={{ marginBottom: '2rem' }}>
-          <h2 style={{ fontSize: '1.1rem', color: 'var(--navy)', marginBottom: '1rem' }}>⚡ Approval Queue — Action Required</h2>
-          {brief?.approval_queue?.vendor_applications?.map(v => (
-            <div key={v.id} className={`alert-zone ${v.hours_in_queue > 24 ? 'urgent' : 'info'}`} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
-              <div>
-                <strong>{v.legal_name}</strong> — Vendor Application
-                <span style={{ marginLeft: '0.5rem' }} className={`badge ${v.hours_in_queue > 24 ? 'badge-red' : 'badge-yellow'}`}>
-                  {v.hours_in_queue > 24 ? 'URGENT' : `${Math.round(v.hours_in_queue)}h in queue`}
-                </span>
-                <div style={{ fontSize: '0.8rem', color: 'var(--muted)' }}>{v.email}</div>
+          {/* Approval Queue */}
+          {pendingCount > 0 && (
+            <div className="pv-fade pv-d1">
+              <div className="pv-section-label" style={{ color: 'var(--pv-danger)' }}>
+                ⚡ Approval Queue — {pendingCount} Item{pendingCount > 1 ? 's' : ''} Require Action
               </div>
-              <div style={{ display: 'flex', gap: '0.5rem' }}>
-                <button onClick={() => approveVendor(v.id)} className="btn btn-success btn-sm">Approve</button>
-                <a href={`/admin/vendors/${v.id}`} className="btn btn-outline btn-sm">Review</a>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                {vendors.map(v => (
+                  <div key={v.id} className="pv-card" style={{ borderLeft: `4px solid ${v.hours_in_queue > 24 ? 'var(--pv-danger)' : 'var(--pv-warning)'}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', flexWrap: 'wrap', padding: '1.125rem 1.5rem' }}>
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
+                        <span style={{ fontWeight: 700, fontFamily: "'DM Sans', sans-serif", color: 'var(--pv-text)', fontSize: '0.9rem' }}>{v.legal_name}</span>
+                        <span className={`pv-badge ${v.hours_in_queue > 24 ? 'pv-badge-red' : 'pv-badge-gold'}`}>{v.hours_in_queue > 24 ? `${Math.round(v.hours_in_queue)}h — URGENT` : `${Math.round(v.hours_in_queue)}h in queue`}</span>
+                      </div>
+                      <div style={{ fontSize: '0.78rem', color: 'var(--pv-muted)', fontFamily: "'DM Sans', sans-serif" }}>Vendor Application · {v.email}</div>
+                    </div>
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      <Link href={`/admin/vendors/${v.id}`} className="pv-btn pv-btn-outline pv-btn-sm">Review</Link>
+                      <button onClick={() => approveVendor(v.id)} className="pv-btn pv-btn-sm" style={{ background: 'var(--pv-success)', color: '#fff', border: '1.5px solid var(--pv-success)' }}>Approve</button>
+                    </div>
+                  </div>
+                ))}
+                {rfqs.map(rfq => (
+                  <div key={rfq.solicitation_id} className="pv-card" style={{ borderLeft: '4px solid var(--pv-gold)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', flexWrap: 'wrap', padding: '1.125rem 1.5rem' }}>
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
+                        <span style={{ fontWeight: 700, fontFamily: "'DM Sans', sans-serif", color: 'var(--pv-text)', fontSize: '0.9rem' }}>{rfq.solicitation_id}</span>
+                        <span className="pv-badge pv-badge-blue">Score: {rfq.triage_score}</span>
+                      </div>
+                      <div style={{ fontSize: '0.78rem', color: 'var(--pv-muted)', fontFamily: "'DM Sans', sans-serif" }}>RFQ Ready for Dispatch · {rfq.agency}</div>
+                    </div>
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      <Link href={`/admin/solicitations/${rfq.solicitation_id}`} className="pv-btn pv-btn-outline pv-btn-sm">View</Link>
+                      <button onClick={() => approveRfq(rfq.solicitation_id)} className="pv-btn pv-btn-primary pv-btn-sm">Approve Dispatch</button>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
-          ))}
-          {brief?.approval_queue?.rfq_dispatch_queue?.map(rfq => (
-            <div key={rfq.solicitation_id} className="alert-zone info" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
-              <div>
-                <strong>{rfq.solicitation_id}</strong> — RFQ Ready for Dispatch
-                <span style={{ marginLeft: '0.5rem' }} className="badge badge-blue">Score: {rfq.triage_score}</span>
-                <div style={{ fontSize: '0.8rem', color: 'var(--muted)' }}>{rfq.agency}</div>
+          )}
+
+          {/* New Opportunities */}
+          <div className="pv-fade pv-d2">
+            <div className="pv-section-label">New Opportunities — Last 24 Hours</div>
+            {opps.length === 0 ? (
+              <div className="pv-card">
+                <div className="pv-empty">
+                  <div className="pv-empty-icon">🔍</div>
+                  <div className="pv-empty-title">No new opportunities in the last 24 hours</div>
+                  <p style={{ fontSize: '0.82rem', color: 'var(--pv-muted)' }}>SAM.gov scan runs at 7:00, 11:00, 15:00, 19:00 ET</p>
+                </div>
               </div>
-              <div style={{ display: 'flex', gap: '0.5rem' }}>
-                <button onClick={() => approveRfq(rfq.solicitation_id)} className="btn btn-primary btn-sm">Approve Dispatch</button>
+            ) : (
+              <div className="pv-card" style={{ padding: 0, overflow: 'hidden' }}>
+                <div className="pv-table-wrap">
+                  <table className="pv-table">
+                    <thead><tr><th>Solicitation #</th><th>Agency</th><th>NAICS</th><th>Est. Value</th><th>Score</th><th>Status</th><th></th></tr></thead>
+                    <tbody>
+                      {opps.map(opp => (
+                        <tr key={opp.solicitation_id}>
+                          <td><span style={{ fontWeight: 700, fontFamily: "'DM Serif Display', serif" }}>{opp.solicitation_id}</span></td>
+                          <td style={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--pv-text-mid)', fontSize: '0.83rem' }}>{opp.agency || '—'}</td>
+                          <td><span className="pv-badge pv-badge-navy">{opp.naics || '—'}</span></td>
+                          <td style={{ fontWeight: 600 }}>{opp.estimated_value ? fmt(opp.estimated_value) : '—'}</td>
+                          <td><span className={`pv-badge ${scoreColor(opp.triage_score)}`}>{opp.triage_score ?? '—'}/10</span></td>
+                          <td><span className="pv-badge pv-badge-gray" style={{ fontSize: '0.62rem' }}>{(opp.status || '').replace(/_/g, ' ')}</span></td>
+                          <td><Link href={`/admin/solicitations/${opp.solicitation_id}`} className="pv-btn pv-btn-navy pv-btn-sm">View</Link></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
-            </div>
-          ))}
-        </section>
+            )}
+          </div>
+
+          {/* Contract Health */}
+          <div className="pv-fade pv-d3">
+            <div className="pv-section-label">Active Contract Health</div>
+            {contracts.length === 0 ? (
+              <div className="pv-card">
+                <div className="pv-empty">
+                  <div className="pv-empty-icon">📄</div>
+                  <div className="pv-empty-title">No active contracts</div>
+                  <p style={{ fontSize: '0.82rem', color: 'var(--pv-muted)' }}>Award contracts from the solicitation pipeline to see health data here.</p>
+                </div>
+              </div>
+            ) : (
+              <div className="pv-card" style={{ padding: 0, overflow: 'hidden' }}>
+                <div className="pv-table-wrap">
+                  <table className="pv-table">
+                    <thead><tr><th>Contract #</th><th>Vendor</th><th>Value</th><th>Invoiced</th><th>Received</th><th>Next Invoice</th></tr></thead>
+                    <tbody>
+                      {contracts.map(c => {
+                        const val = Number(c.contract_value || 0);
+                        const inv = Number(c.total_invoiced || 0);
+                        const rec = Number(c.total_received || 0);
+                        const pct = val > 0 ? Math.min(100, Math.round(inv / val * 100)) : 0;
+                        return (
+                          <tr key={c.contract_number}>
+                            <td><span style={{ fontWeight: 700 }}>{c.contract_number}</span></td>
+                            <td style={{ color: 'var(--pv-text-mid)', fontSize: '0.83rem' }}>{c.vendor_name || '—'}</td>
+                            <td style={{ fontWeight: 600 }}>{fmt(val)}</td>
+                            <td>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                <div style={{ flex: 1, height: 4, background: '#F0F4FB', borderRadius: 2, overflow: 'hidden', minWidth: 48 }}>
+                                  <div style={{ height: '100%', width: `${pct}%`, background: 'var(--pv-gold)', borderRadius: 2 }} />
+                                </div>
+                                <span style={{ fontSize: '0.78rem', color: 'var(--pv-muted)', whiteSpace: 'nowrap' }}>{fmt(inv)}</span>
+                              </div>
+                            </td>
+                            <td style={{ color: 'var(--pv-success)', fontWeight: 700 }}>{fmt(rec)}</td>
+                            <td style={{ fontSize: '0.8rem', color: 'var(--pv-muted)' }}>{c.next_invoice_date || '—'}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+
+        </div>
       )}
-
-      {/* New Opportunities */}
-      <section style={{ marginBottom: '2rem' }}>
-        <h2 style={{ fontSize: '1.1rem', color: 'var(--navy)', marginBottom: '1rem' }}>New Opportunities (Last 24hrs)</h2>
-        {(!brief?.new_opportunities || brief.new_opportunities.length === 0) ? (
-          <div className="empty-state">No new opportunities in the last 24 hours. SAM.gov scan runs at 7:00 AM ET.</div>
-        ) : (
-          <div className="table-wrapper">
-            <table>
-              <thead><tr><th>Solicitation #</th><th>Agency</th><th>NAICS</th><th>Value</th><th>Score</th><th>Status</th><th>Action</th></tr></thead>
-              <tbody>
-                {brief.new_opportunities.map(opp => (
-                  <tr key={opp.solicitation_id} style={{ background: opp.triage_score >= 8 ? '#f0fdf4' : opp.triage_score >= 6 ? '#fefce8' : undefined }}>
-                    <td style={{ fontWeight: 600 }}>{opp.solicitation_id}</td>
-                    <td>{opp.agency || '—'}</td>
-                    <td><span className="badge badge-gold">{opp.naics || '—'}</span></td>
-                    <td>{opp.estimated_value ? `$${Number(opp.estimated_value).toLocaleString()}` : '—'}</td>
-                    <td>
-                      <span className={`badge ${opp.triage_score >= 8 ? 'badge-green' : opp.triage_score >= 6 ? 'badge-yellow' : 'badge-red'}`}>
-                        {opp.triage_score ?? '—'}
-                      </span>
-                    </td>
-                    <td><span className="badge badge-blue">{opp.status}</span></td>
-                    <td><a href={`/admin/solicitations/${opp.solicitation_id}`} className="btn btn-navy btn-sm">View</a></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
-
-      {/* Active Contracts */}
-      <section>
-        <h2 style={{ fontSize: '1.1rem', color: 'var(--navy)', marginBottom: '1rem' }}>Active Contract Health</h2>
-        {(!brief?.active_contract_health || brief.active_contract_health.length === 0) ? (
-          <div className="empty-state">No active contracts yet.</div>
-        ) : (
-          <div className="table-wrapper">
-            <table>
-              <thead><tr><th>Contract #</th><th>Vendor</th><th>Value</th><th>Invoiced</th><th>Received</th><th>Next Invoice</th></tr></thead>
-              <tbody>
-                {brief.active_contract_health.map(c => (
-                  <tr key={c.contract_number}>
-                    <td style={{ fontWeight: 600 }}>{c.contract_number}</td>
-                    <td>{c.vendor_name || '—'}</td>
-                    <td>${Number(c.contract_value || 0).toLocaleString()}</td>
-                    <td>${Number(c.total_invoiced || 0).toLocaleString()}</td>
-                    <td>${Number(c.total_received || 0).toLocaleString()}</td>
-                    <td>{c.next_invoice_date || '—'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
-    </>
+    </AdminShell>
   );
 }

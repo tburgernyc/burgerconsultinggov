@@ -1,30 +1,15 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { AdminShell } from '@/components/AdminShell';
 
 const API = '/api/proxy';
 
-type Proposal = {
-  id: string;
-  solicitation_id: string;
-  agency: string;
-  naics: string;
-  estimated_value: number;
-  win_probability: number;
-  status: string;
-  created_at: string;
-  updated_at: string;
-};
+type Proposal = { id: string; solicitation_id: string; agency: string; naics: string; win_probability: number; status: string; created_at: string; };
+type ProposalDetail = { solicitation_id: string; technical_approach: string; management_plan: string; pricing_narrative: string; past_performance: string; win_probability: number; status: string; };
 
-type ProposalDetail = {
-  solicitation_id: string;
-  technical_approach: string;
-  management_plan: string;
-  pricing_narrative: string;
-  past_performance: string;
-  win_probability: number;
-  status: string;
-};
+function winColor(p: number) { return p >= 70 ? 'pv-badge-green' : p >= 40 ? 'pv-badge-gold' : 'pv-badge-red'; }
+function winText(p: number) { return p >= 70 ? 'var(--pv-success)' : p >= 40 ? 'var(--pv-warning)' : 'var(--pv-danger)'; }
 
 export default function ProposalsPage() {
   const [proposals, setProposals] = useState<Proposal[]>([]);
@@ -35,11 +20,7 @@ export default function ProposalsPage() {
   const [genSolId, setGenSolId] = useState('');
 
   useEffect(() => {
-    fetch(`${API}/api/proposals`)
-      .then(r => r.json())
-      .then(d => setProposals(Array.isArray(d) ? d : []))
-      .catch(() => setProposals([]))
-      .finally(() => setLoading(false));
+    fetch(`${API}/api/proposals`).then(r => r.json()).then(d => setProposals(Array.isArray(d) ? d : [])).catch(() => setProposals([])).finally(() => setLoading(false));
   }, []);
 
   async function viewProposal(solId: string) {
@@ -48,9 +29,7 @@ export default function ProposalsPage() {
     try {
       const r = await fetch(`${API}/api/proposals/${solId}`);
       if (r.ok) setSelected(await r.json());
-    } finally {
-      setDetailLoading(false);
-    }
+    } finally { setDetailLoading(false); }
   }
 
   async function generateNew() {
@@ -58,8 +37,7 @@ export default function ProposalsPage() {
     setGenerating(true);
     try {
       const r = await fetch(`${API}/api/proposals/generate`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ solicitation_id: genSolId.trim() }),
       });
       if (!r.ok) { alert(`Generation failed (${r.status})`); return; }
@@ -68,128 +46,111 @@ export default function ProposalsPage() {
       const reloaded = await fetch(`${API}/api/proposals`).then(x => x.json());
       setProposals(Array.isArray(reloaded) ? reloaded : []);
       await viewProposal(d.solicitation_id);
-    } finally {
-      setGenerating(false);
-    }
+    } finally { setGenerating(false); }
   }
 
-  const winColor = (p: number) => p >= 70 ? '#166534' : p >= 40 ? '#92400e' : '#991b1b';
-  const winBg = (p: number) => p >= 70 ? '#f0fdf4' : p >= 40 ? '#fffbeb' : '#fef2f2';
+  const SECTIONS: { label: string; key: keyof ProposalDetail; color: string }[] = [
+    { label: 'Technical Approach', key: 'technical_approach', color: '#1D4ED8' },
+    { label: 'Management Plan', key: 'management_plan', color: '#7C3AED' },
+    { label: 'Pricing Narrative', key: 'pricing_narrative', color: 'var(--pv-success)' },
+    { label: 'Past Performance', key: 'past_performance', color: '#92400E' },
+  ];
 
   return (
-    <>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
-        <div>
-          <h1 style={{ fontSize: '1.5rem', color: 'var(--navy)' }}>AI Proposals</h1>
-          <p style={{ color: 'var(--muted)', fontSize: '0.875rem' }}>Gemini-generated federal proposal drafts</p>
-        </div>
+    <AdminShell
+      title="AI Proposals"
+      subtitle="Gemini 2.5 Pro generated federal proposal drafts"
+      actions={
         <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-          <input
-            value={genSolId}
-            onChange={e => setGenSolId(e.target.value)}
-            placeholder="Solicitation ID"
-            className="form-input"
-            style={{ width: 200 }}
-            onKeyDown={e => e.key === 'Enter' && generateNew()}
-          />
-          <button
-            onClick={generateNew}
-            disabled={generating}
-            className="btn btn-primary btn-sm"
-          >
-            {generating ? 'Generating...' : '✨ Generate Proposal'}
+          <input value={genSolId} onChange={e => setGenSolId(e.target.value)} placeholder="Solicitation ID"
+            className="pv-input" style={{ width: 180, fontSize: '0.85rem', padding: '0.55rem 0.875rem' }}
+            onKeyDown={e => e.key === 'Enter' && generateNew()} />
+          <button onClick={generateNew} disabled={generating} className="pv-btn pv-btn-primary pv-btn-sm">
+            {generating ? 'Generating…' : '✦ Generate'}
           </button>
         </div>
-      </div>
+      }
+    >
+      <div style={{ display: 'grid', gridTemplateColumns: selected ? '340px 1fr' : '1fr', gap: '1.5rem', alignItems: 'start' }}>
 
-      <div style={{ display: 'grid', gridTemplateColumns: selected ? '1fr 1.6fr' : '1fr', gap: '1.5rem' }}>
+        {/* List */}
         <div>
           {loading ? (
-            <div className="empty-state">Loading proposals...</div>
+            <div style={{ height: 200, background: '#E4EAF6', borderRadius: 12 }} />
           ) : proposals.length === 0 ? (
-            <div className="empty-state">
-              No proposals generated yet. Enter a Solicitation ID above and click Generate.
+            <div className="pv-card">
+              <div className="pv-empty">
+                <div className="pv-empty-icon">✦</div>
+                <div className="pv-empty-title">No proposals generated yet</div>
+                <p style={{ fontSize: '0.82rem', color: 'var(--pv-muted)' }}>Enter a Solicitation ID above and click Generate to create an AI proposal draft.</p>
+              </div>
             </div>
           ) : (
-            <div className="table-wrapper">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Solicitation</th>
-                    <th>Agency</th>
-                    <th>Win %</th>
-                    <th>Status</th>
-                    <th>Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {proposals.map(p => (
-                    <tr key={p.id} style={{ background: selected?.solicitation_id === p.solicitation_id ? '#f0f9ff' : undefined }}>
-                      <td style={{ fontWeight: 600 }}>{p.solicitation_id}</td>
-                      <td style={{ fontSize: '0.8rem', color: 'var(--muted)' }}>{p.agency || '—'}</td>
-                      <td>
-                        {p.win_probability != null ? (
-                          <span style={{ background: winBg(p.win_probability), color: winColor(p.win_probability), padding: '2px 8px', borderRadius: 4, fontSize: '0.8rem', fontWeight: 700 }}>
-                            {p.win_probability}%
-                          </span>
-                        ) : '—'}
-                      </td>
-                      <td><span className="badge badge-blue">{p.status}</span></td>
-                      <td>
-                        <button onClick={() => viewProposal(p.solicitation_id)} className="btn btn-navy btn-sm">
-                          View
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="pv-card pv-fade" style={{ padding: 0, overflow: 'hidden' }}>
+              <div className="pv-table-wrap">
+                <table className="pv-table">
+                  <thead><tr><th>Solicitation</th><th>Agency</th><th>Win %</th><th>Status</th><th></th></tr></thead>
+                  <tbody>
+                    {proposals.map(p => (
+                      <tr key={p.id} style={{ background: selected?.solicitation_id === p.solicitation_id ? '#EFF6FF' : undefined }}>
+                        <td><span style={{ fontWeight: 700 }}>{p.solicitation_id}</span></td>
+                        <td style={{ fontSize: '0.78rem', color: 'var(--pv-muted)', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.agency || '—'}</td>
+                        <td>
+                          {p.win_probability != null ? (
+                            <span className={`pv-badge ${winColor(p.win_probability)}`}>{p.win_probability}%</span>
+                          ) : '—'}
+                        </td>
+                        <td><span className="pv-badge pv-badge-navy" style={{ fontSize: '0.62rem' }}>{p.status}</span></td>
+                        <td>
+                          <button onClick={() => viewProposal(p.solicitation_id)} className="pv-btn pv-btn-navy pv-btn-sm">View</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
         </div>
 
+        {/* Detail Panel */}
         {selected && (
-          <div>
-            <div className="card" style={{ marginBottom: '1rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                <h2 style={{ fontSize: '1.1rem', color: 'var(--navy)' }}>{selected.solicitation_id}</h2>
-                <div style={{ display: 'flex', gap: '0.5rem' }}>
+          <div className="pv-fade">
+            <div className="pv-card" style={{ marginBottom: '1rem', padding: '1.25rem 1.5rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.875rem' }}>
+                <div>
+                  <div style={{ fontFamily: "'DM Serif Display', serif", fontSize: '1.05rem', color: 'var(--pv-text)' }}>{selected.solicitation_id}</div>
                   {selected.win_probability != null && (
-                    <span style={{ background: winBg(selected.win_probability), color: winColor(selected.win_probability), padding: '4px 12px', borderRadius: 4, fontWeight: 700, fontSize: '0.9rem' }}>
+                    <span style={{ fontSize: '1.25rem', fontWeight: 800, color: winText(selected.win_probability), fontFamily: "'DM Sans', sans-serif" }}>
                       {selected.win_probability}% Win Probability
                     </span>
                   )}
-                  <button onClick={() => setSelected(null)} className="btn btn-outline btn-sm">✕ Close</button>
                 </div>
+                <button onClick={() => setSelected(null)} className="pv-btn pv-btn-outline pv-btn-sm">✕ Close</button>
               </div>
-
-              {detailLoading ? (
-                <div style={{ color: 'var(--muted)', textAlign: 'center', padding: '2rem' }}>Loading...</div>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-                  {[
-                    { label: 'Technical Approach', key: 'technical_approach' as const, color: '#1d4ed8' },
-                    { label: 'Management Plan', key: 'management_plan' as const, color: '#7c3aed' },
-                    { label: 'Pricing Narrative', key: 'pricing_narrative' as const, color: '#065f46' },
-                    { label: 'Past Performance', key: 'past_performance' as const, color: '#92400e' },
-                  ].map(({ label, key, color }) => (
-                    selected[key] ? (
-                      <div key={key}>
-                        <div style={{ fontSize: '0.7rem', textTransform: 'uppercase', fontWeight: 700, color, marginBottom: '0.4rem', letterSpacing: '0.05em' }}>
-                          {label}
-                        </div>
-                        <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 6, padding: '0.875rem', fontSize: '0.85rem', color: 'var(--text)', lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>
-                          {selected[key]}
-                        </div>
-                      </div>
-                    ) : null
-                  ))}
-                </div>
-              )}
             </div>
+
+            {detailLoading ? (
+              <div className="pv-card"><div className="pv-empty"><div className="pv-empty-title">Loading proposal…</div></div></div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                {SECTIONS.map(({ label, key, color }) =>
+                  selected[key] ? (
+                    <div key={key} className="pv-card">
+                      <div style={{ fontSize: '0.65rem', textTransform: 'uppercase', fontWeight: 800, color, marginBottom: '0.625rem', letterSpacing: '0.07em', fontFamily: "'DM Sans', sans-serif" }}>
+                        {label}
+                      </div>
+                      <div style={{ fontSize: '0.84rem', color: 'var(--pv-text-mid)', lineHeight: 1.75, whiteSpace: 'pre-wrap', fontFamily: "'DM Sans', sans-serif" }}>
+                        {selected[key] as string}
+                      </div>
+                    </div>
+                  ) : null
+                )}
+              </div>
+            )}
           </div>
         )}
       </div>
-    </>
+    </AdminShell>
   );
 }

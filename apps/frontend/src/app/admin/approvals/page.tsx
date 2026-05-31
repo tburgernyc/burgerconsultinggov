@@ -1,8 +1,13 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
+import { AdminShell } from '@/components/AdminShell';
 
 const API = '/api/proxy';
+
+type VendorApp = { id: string; legal_name: string; email: string; onboarding_status: string; created_at: string; };
+type Rfq = { solicitation_id: string; agency: string; triage_score: number; phase_status: string; };
 
 export default function ApprovalsPage() {
   const [queue, setQueue] = useState<{ vendor_applications: VendorApp[]; rfq_dispatch_queue: Rfq[]; } | null>(null);
@@ -14,13 +19,13 @@ export default function ApprovalsPage() {
 
   async function approveVendor(id: string) {
     const res = await fetch(`${API}/api/admin/vendor/approve/${id}`, { method: 'POST' });
-    if (!res.ok) { alert(`Vendor approval failed (${res.status}). Please try again.`); return; }
+    if (!res.ok) { alert(`Vendor approval failed (${res.status})`); return; }
     window.location.reload();
   }
 
   async function approveRfq(id: string) {
     const res = await fetch(`${API}/api/sourcing/approve/${id}`, { method: 'POST' });
-    if (!res.ok) { alert(`RFQ dispatch failed (${res.status}). Please try again.`); return; }
+    if (!res.ok) { alert(`RFQ dispatch failed (${res.status})`); return; }
     window.location.reload();
   }
 
@@ -29,56 +34,81 @@ export default function ApprovalsPage() {
   const total = vendors.length + rfqs.length;
 
   return (
-    <>
-      <div style={{ marginBottom: '1.5rem' }}>
-        <h1 style={{ fontSize: '1.5rem', color: 'var(--navy)' }}>Approval Queue</h1>
-        <p style={{ color: 'var(--muted)', fontSize: '0.875rem' }}>{total} items awaiting your approval</p>
-      </div>
-
-      {loading ? <div style={{ color: 'var(--muted)' }}>Loading...</div> : total === 0 ? (
-        <div className="empty-state"><div style={{ fontSize: '3rem', marginBottom: '1rem' }}>✅</div>All clear — no pending approvals.</div>
+    <AdminShell
+      title="Approval Queue"
+      subtitle={total > 0 ? `${total} item${total > 1 ? 's' : ''} awaiting your action` : 'All clear'}
+    >
+      {loading ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+          {[1,2,3].map(i => <div key={i} style={{ height: 90, background: '#E4EAF6', borderRadius: 12 }} />)}
+        </div>
+      ) : total === 0 ? (
+        <div className="pv-card pv-fade">
+          <div className="pv-empty">
+            <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>✅</div>
+            <div className="pv-empty-title">All clear — no pending approvals</div>
+            <p style={{ fontSize: '0.85rem', color: 'var(--pv-muted)' }}>New vendor applications and scored RFQs will appear here automatically.</p>
+          </div>
+        </div>
       ) : (
-        <>
+        <div style={{ display: 'grid', gridTemplateColumns: vendors.length && rfqs.length ? '1fr 1fr' : '1fr', gap: '2rem' }}>
+
+          {/* Vendor Applications */}
           {vendors.length > 0 && (
-            <section style={{ marginBottom: '2rem' }}>
-              <h2 style={{ fontSize: '1.1rem', color: 'var(--navy)', marginBottom: '1rem' }}>Vendor Applications ({vendors.length})</h2>
-              {vendors.map(v => (
-                <div key={v.id} className="card card-navy" style={{ marginBottom: '0.75rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>
-                  <div>
-                    <div style={{ fontWeight: 700, color: 'var(--navy)' }}>{v.legal_name}</div>
-                    <div style={{ fontSize: '0.8rem', color: 'var(--muted)' }}>{v.email} · {v.onboarding_status}</div>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>Submitted: {v.created_at ? new Date(v.created_at).toLocaleDateString() : '—'}</div>
+            <div>
+              <div className="pv-section-label">Vendor Applications ({vendors.length})</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
+                {vendors.map((v, i) => (
+                  <div key={v.id} className={`pv-card pv-card-gold-border pv-fade pv-d${i+1}`} style={{ padding: '1.25rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.75rem', marginBottom: '0.75rem' }}>
+                      <div>
+                        <div style={{ fontFamily: "'DM Serif Display', serif", fontSize: '1rem', color: 'var(--pv-text)', marginBottom: '0.2rem' }}>{v.legal_name}</div>
+                        <div style={{ fontSize: '0.78rem', color: 'var(--pv-muted)', fontFamily: "'DM Sans', sans-serif" }}>{v.email}</div>
+                        <div style={{ fontSize: '0.72rem', color: 'var(--pv-muted)', marginTop: '0.15rem', fontFamily: "'DM Sans', sans-serif" }}>
+                          Submitted: {v.created_at ? new Date(v.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—'}
+                        </div>
+                      </div>
+                      <span className="pv-badge pv-badge-gold" style={{ fontSize: '0.62rem', flexShrink: 0 }}>{v.onboarding_status}</span>
+                    </div>
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      <Link href={`/admin/vendors/${v.id}`} className="pv-btn pv-btn-outline pv-btn-sm">Review →</Link>
+                      <button onClick={() => approveVendor(v.id)} className="pv-btn pv-btn-sm" style={{ background: 'var(--pv-success)', color: '#fff', border: '1.5px solid var(--pv-success)', flex: 1, justifyContent: 'center' }}>
+                        Approve Portal Access
+                      </button>
+                    </div>
                   </div>
-                  <div style={{ display: 'flex', gap: '0.5rem' }}>
-                    <a href={`/admin/vendors/${v.id}`} className="btn btn-outline btn-sm">Review</a>
-                    <button onClick={() => approveVendor(v.id)} className="btn btn-success btn-sm">Approve</button>
-                  </div>
-                </div>
-              ))}
-            </section>
+                ))}
+              </div>
+            </div>
           )}
+
+          {/* RFQ Dispatch Queue */}
           {rfqs.length > 0 && (
-            <section>
-              <h2 style={{ fontSize: '1.1rem', color: 'var(--navy)', marginBottom: '1rem' }}>RFQ Dispatch Queue ({rfqs.length})</h2>
-              {rfqs.map(rfq => (
-                <div key={rfq.solicitation_id} className="card card-gold" style={{ marginBottom: '0.75rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>
-                  <div>
-                    <div style={{ fontWeight: 700, color: 'var(--navy)' }}>{rfq.solicitation_id}</div>
-                    <div style={{ fontSize: '0.8rem', color: 'var(--muted)' }}>{rfq.agency} · Score: {rfq.triage_score}</div>
+            <div>
+              <div className="pv-section-label">RFQ Dispatch Queue ({rfqs.length})</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
+                {rfqs.map((rfq, i) => (
+                  <div key={rfq.solicitation_id} className={`pv-card pv-card-navy-border pv-fade pv-d${i+1}`} style={{ padding: '1.25rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.75rem', marginBottom: '0.75rem' }}>
+                      <div>
+                        <div style={{ fontFamily: "'DM Serif Display', serif", fontSize: '1rem', color: 'var(--pv-text)', marginBottom: '0.2rem' }}>{rfq.solicitation_id}</div>
+                        <div style={{ fontSize: '0.78rem', color: 'var(--pv-muted)', fontFamily: "'DM Sans', sans-serif" }}>{rfq.agency || 'Federal Agency'}</div>
+                      </div>
+                      <span className="pv-badge pv-badge-blue" style={{ flexShrink: 0 }}>Score: {rfq.triage_score}/10</span>
+                    </div>
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      <Link href={`/admin/solicitations/${rfq.solicitation_id}`} className="pv-btn pv-btn-outline pv-btn-sm">View</Link>
+                      <button onClick={() => approveRfq(rfq.solicitation_id)} className="pv-btn pv-btn-primary pv-btn-sm" style={{ flex: 1, justifyContent: 'center' }}>
+                        Approve Dispatch
+                      </button>
+                    </div>
                   </div>
-                  <div style={{ display: 'flex', gap: '0.5rem' }}>
-                    <a href={`/admin/solicitations/${rfq.solicitation_id}`} className="btn btn-outline btn-sm">View</a>
-                    <button onClick={() => approveRfq(rfq.solicitation_id)} className="btn btn-primary btn-sm">Approve Dispatch</button>
-                  </div>
-                </div>
-              ))}
-            </section>
+                ))}
+              </div>
+            </div>
           )}
-        </>
+        </div>
       )}
-    </>
+    </AdminShell>
   );
 }
-
-type VendorApp = { id: string; legal_name: string; email: string; onboarding_status: string; created_at: string; };
-type Rfq = { solicitation_id: string; agency: string; triage_score: number; phase_status: string; };
