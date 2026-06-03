@@ -19,7 +19,7 @@ export default function PortalLoginPage() {
       if (result?.error) {
         setError('Invalid email or password. Contact procurement@burgergov.com if you need access.');
       } else {
-        window.location.href = email.includes('procurement@') ? '/admin' : '/portal/dashboard';
+        window.location.href = email === 'procurement@burgergov.com' ? '/admin' : '/portal/dashboard';
       }
     } catch {
       setError('Connection error. Please try again.');
