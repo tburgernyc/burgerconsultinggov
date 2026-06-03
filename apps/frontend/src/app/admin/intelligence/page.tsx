@@ -24,7 +24,10 @@ export default function IntelligencePage() {
       .then(r => r.json()).then(setData).catch(() => setData(null)).finally(() => setLoading(false));
   }
 
-  useEffect(() => { fetchData(''); }, []);
+  useEffect(() => {
+    fetch(`${API}/api/intelligence/awards?limit=100`)
+      .then(r => r.json()).then(setData).catch(() => setData(null)).finally(() => setLoading(false));
+  }, []);
 
   function applyFilter(naics: string) {
     setFilterNaics(naics);

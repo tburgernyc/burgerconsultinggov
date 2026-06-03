@@ -169,7 +169,7 @@ export default function PortalLoginPage() {
           {/* What to expect */}
           <div style={{ marginTop: '2rem', padding: '1.25rem', background: 'var(--pv-gold-pale)', border: '1px solid #EDD88A', borderRadius: 10 }}>
             <div style={{ fontSize: '0.7rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.07em', color: '#7C5100', marginBottom: '0.625rem' }}>
-              Don't have credentials?
+              Don&apos;t have credentials?
             </div>
             <p style={{ fontSize: '0.78rem', color: '#92400E', lineHeight: 1.55 }}>
               After your application is approved by Timothy, you will receive login credentials via email within 24 hours. Contact <strong>procurement@burgergov.com</strong> with questions.

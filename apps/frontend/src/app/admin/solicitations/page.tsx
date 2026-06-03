@@ -18,6 +18,7 @@ const STATUS_BADGE: Record<string, string> = {
 };
 
 const fmt = (n: number) => '$' + Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 0 });
+const PAGE_LOAD_TIME = Date.now();
 
 function scoreClass(s: number | null): string {
   if (!s) return 'pv-badge-gray';
@@ -113,7 +114,7 @@ export default function SolicitationPipelinePage() {
                 <tbody>
                   {filtered.map(s => {
                     const deadline = s.response_deadline ? new Date(s.response_deadline) : null;
-                    const daysLeft = deadline ? Math.ceil((deadline.getTime() - Date.now()) / 86400000) : null;
+                    const daysLeft = deadline ? Math.ceil((deadline.getTime() - PAGE_LOAD_TIME) / 86400000) : null;
                     return (
                       <tr key={s.solicitation_id}>
                         <td>

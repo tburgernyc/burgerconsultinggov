@@ -42,7 +42,6 @@ export default function VendorDashboard() {
     }).finally(() => setLoading(false));
   }, []);
 
-  const totalContractValue = contracts.reduce((s, c) => s + Number(c.contract_value || 0), 0);
   const totalInvoiced = contracts.reduce((s, c) => s + Number(c.total_invoiced || 0), 0);
   const totalReceived = contracts.reduce((s, c) => s + Number(c.total_received || 0), 0);
   const pendingPayment = totalInvoiced - totalReceived;
