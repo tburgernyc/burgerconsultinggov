@@ -9,7 +9,7 @@ type Award = { naics: string; agency: string; award_amount: number; awardee_name
 type MarketStat = { naics: string; award_count: number; avg_award: number; min_award: number; max_award: number; median_award: number; };
 type IntelData = { awards: Award[]; market_stats: MarketStat[]; last_updated: string; };
 
-const NAICS_LABELS: Record<string, string> = { '561210': 'Facilities Support', '561720': 'Janitorial Services', '561730': 'Landscaping Services' };
+const NAICS_LABELS: Record<string, string> = { '541511': 'Software Development', '541519': 'IT Services & PM', '541512': 'Systems Design' };
 const fmt = (n: number) => n ? '$' + Number(n).toLocaleString('en-US', { maximumFractionDigits: 0 }) : '—';
 
 export default function IntelligencePage() {
@@ -87,7 +87,7 @@ export default function IntelligencePage() {
         <div>
           <div className="pv-section-label">Award History</div>
           <div style={{ display: 'flex', gap: '0.4rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
-            {[['', 'All NAICS'], ['561210', '561210 — Facilities Support'], ['561720', '561720 — Janitorial'], ['561730', '561730 — Landscaping']].map(([n, label]) => (
+            {[['', 'All NAICS'], ['541511', '541511 — Software Dev'], ['541519', '541519 — IT Services & PM'], ['541512', '541512 — Systems Design']].map(([n, label]) => (
               <button key={n} onClick={() => applyFilter(n)} className={`pv-btn pv-btn-sm ${filterNaics === n ? 'pv-btn-navy' : 'pv-btn-outline'}`}>
                 {label}
               </button>
@@ -102,7 +102,7 @@ export default function IntelligencePage() {
                 <div className="pv-empty-icon">🔍</div>
                 <div className="pv-empty-title">No award data loaded yet</div>
                 <p style={{ fontSize: '0.82rem', color: 'var(--pv-muted)', maxWidth: 320, margin: '0 auto' }}>
-                  The daily 6:00 AM ET cron will pull from USASpending.gov automatically. Data covers NAICS 561210, 561720, 561730 for the past 12 months.
+                  The daily 6:00 AM ET cron will pull from USASpending.gov automatically. Data covers NAICS 541511, 541519, 541512 for the past 12 months.
                 </p>
               </div>
             </div>

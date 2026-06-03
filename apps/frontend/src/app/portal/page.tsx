@@ -83,7 +83,7 @@ export default function PortalLoginPage() {
         <div style={{ position: 'relative' }}>
           <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '1.25rem' }}>
             <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap' }}>
-              {[['EIN', '84-3113166'], ['NAICS', '561210 / 561720 / 561730'], ['Entity', 'Small Business']].map(([label, val]) => (
+              {[['EIN', '84-3113166'], ['NAICS', '541511 / 541519 / 541512'], ['Entity', 'Small Business']].map(([label, val]) => (
                 <div key={label}>
                   <div style={{ fontSize: '0.58rem', color: 'rgba(201,168,76,0.5)', textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 700 }}>{label}</div>
                   <div style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.4)', marginTop: '0.1rem' }}>{val}</div>

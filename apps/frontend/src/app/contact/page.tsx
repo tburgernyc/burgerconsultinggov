@@ -158,6 +158,6 @@ const quickRef = [
   { label: 'NY DOS ID', value: '5624755' },
   { label: 'SAM.gov Status', value: 'Registered' },
   { label: 'SBA Status', value: 'Small Business Entity' },
-  { label: 'Primary NAICS', value: '561210' },
+  { label: 'Primary NAICS', value: '541511' },
   { label: 'Contract Types', value: 'FFP, IDIQ, BPA' },
 ];

@@ -13,9 +13,9 @@ const STEPS = [
 ];
 
 const NAICS_OPTIONS = [
-  { code: '561210', label: 'Facilities Support Services' },
-  { code: '561720', label: 'Janitorial & Custodial Services' },
-  { code: '561730', label: 'Landscaping & Grounds Maintenance' },
+  { code: '541511', label: 'Custom Software & Web Development' },
+  { code: '541519', label: 'IT Services & Project Management' },
+  { code: '541512', label: 'Systems Design & IT Infrastructure' },
 ];
 
 const VALUE_PROPS = [

@@ -8,7 +8,7 @@ const API = '/api/proxy';
 
 type Vendor = { id: string; legal_name: string; cage_code: string; email: string; phone: string; city: string; state: string; zip_code: string; naics_codes: string[]; insurance_verified: boolean; insurance_expiry: string; sam_verified: boolean; pay_when_paid_accepted: boolean; onboarding_status: string; portal_access: boolean; contracts_completed: number; performance_rating: number; notes: string; };
 
-const NAICS_LABELS: Record<string, string> = { '561210': 'Facilities Support', '561720': 'Janitorial', '561730': 'Landscaping' };
+const NAICS_LABELS: Record<string, string> = { '541511': 'Software Dev', '541519': 'IT Services & PM', '541512': 'Systems Design' };
 
 export default function VendorDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);

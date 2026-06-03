@@ -2,8 +2,8 @@ import Image from 'next/image';
 import Link from 'next/link';
 
 export const metadata = {
-  title: 'Burger Consulting LLC — Federal Facilities Services',
-  description: 'SBA-registered small business delivering professional facilities support, janitorial, and landscaping services to U.S. federal agencies. NAICS 561210, 561720, 561730.',
+  title: 'Burger Consulting LLC — Federal IT Services',
+  description: 'SBA-registered small business delivering custom software development, IT project management, and systems design to U.S. federal agencies. NAICS 541511, 541519, 541512.',
 };
 
 const cageCode = process.env.CAGE_CODE || 'PENDING';
@@ -311,7 +311,7 @@ const trustItems = [
   { label: 'SBA Status', value: 'Small Business Entity' },
   { label: 'SAM.gov', value: 'Registered' },
   { label: 'Contract Type', value: 'Firm Fixed Price' },
-  { label: 'Primary NAICS', value: '561210' },
+  { label: 'Primary NAICS', value: '541511' },
   { label: 'Set-Asides', value: 'SB Eligible' },
   { label: 'Jurisdiction', value: 'New York State' },
 ];

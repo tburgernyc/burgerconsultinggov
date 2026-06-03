@@ -3,7 +3,7 @@ import Link from 'next/link';
 
 export const metadata = {
   title: 'About — Burger Consulting LLC',
-  description: 'Burger Consulting LLC is a federally registered small business led by Timothy J. Burger. We deliver professional facilities support, janitorial, and landscaping services to U.S. government agencies.',
+  description: 'Burger Consulting LLC is a federally registered small business led by Timothy J. Burger. We deliver custom software development, IT project management, and systems design to U.S. government agencies.',
 };
 
 export default function AboutPage() {
@@ -42,7 +42,7 @@ export default function AboutPage() {
               Connecting Federal Agencies with Qualified Service Providers
             </h2>
             <p style={{ color: 'var(--muted)', lineHeight: 1.8, marginBottom: '1.25rem', fontSize: '0.95rem' }}>
-              Burger Consulting LLC was founded to bridge the gap between federal agencies that need reliable, professional facilities services and the qualified small businesses capable of delivering them.
+              Burger Consulting LLC was founded to bridge the gap between federal agencies that need reliable, professional IT services and the qualified small businesses capable of delivering them.
             </p>
             <p style={{ color: 'var(--muted)', lineHeight: 1.8, marginBottom: '1.25rem', fontSize: '0.95rem' }}>
               As a federally registered prime contractor, we absorb the complexity of federal contracting — compliance requirements, solicitation management, billing administration, and payment processing — so agencies get consistent service delivery and subcontractors get reliable federal work opportunities they couldn&apos;t access alone.
@@ -171,7 +171,7 @@ export default function AboutPage() {
               </div>
               <div style={{ padding: '1.75rem' }}>
                 <p style={{ color: 'var(--muted)', fontSize: '0.9rem', lineHeight: 1.7, marginBottom: '1.25rem' }}>
-                  We respond to federal solicitations in facilities support, janitorial, and landscaping with fully compliant proposals. Our FFP contract structure means predictable costs, no surprises, and professional delivery you can document and close.
+                  We respond to federal IT solicitations in software development, IT project management, and systems design with fully compliant proposals. Our FFP contract structure means predictable costs, no surprises, and professional delivery you can document and close.
                 </p>
                 <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
                   {agencyBenefits.map(b => (
@@ -203,7 +203,7 @@ export default function AboutPage() {
               </div>
               <div style={{ padding: '1.75rem' }}>
                 <p style={{ color: 'var(--muted)', fontSize: '0.9rem', lineHeight: 1.7, marginBottom: '1.25rem' }}>
-                  If you run a cleaning, landscaping, or facilities business, we can connect you with federal work. We handle all the compliance, paperwork, and billing — and you receive payment within 30 days of agency receipt, every time.
+                  If you are a software developer, IT consultant, or systems engineer, we can connect you with federal work. We handle all the compliance, paperwork, and billing — and you receive payment within 30 days of agency receipt, every time.
                 </p>
                 <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
                   {subBenefits.map(b => (
@@ -306,6 +306,6 @@ const registrationItems = [
   { label: 'NY DOS ID', value: '5624755' },
   { label: 'SBA Status', value: 'Small Business' },
   { label: 'SAM.gov', value: 'Registered' },
-  { label: 'Primary NAICS', value: '561210' },
+  { label: 'Primary NAICS', value: '541511' },
   { label: 'Set-Asides', value: 'SB Eligible' },
 ];

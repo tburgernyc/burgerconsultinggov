@@ -13,7 +13,7 @@ type Financials = {
   win_rate_pct: number; bids_won: number; bids_total: number;
 };
 
-const NAICS_LABELS: Record<string, string> = { '561210': 'Facilities Support', '561720': 'Janitorial Services', '561730': 'Landscaping Services' };
+const NAICS_LABELS: Record<string, string> = { '541511': 'Software Development', '541519': 'IT Services & PM', '541512': 'Systems Design' };
 
 const fmt = (n: number) => '$' + Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 0 });
 const pct = (n: number) => `${Number(n || 0).toFixed(1)}%`;

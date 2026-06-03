@@ -3,12 +3,12 @@ import Link from 'next/link';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Burger Consulting LLC — Federal Facilities Services',
-  description: 'Burger Consulting LLC is a federally registered small business providing facilities support, janitorial, and landscaping services to U.S. government agencies. NAICS 561210, 561720, 561730. New York, NY.',
-  keywords: 'federal contracting, facilities support, janitorial services, landscaping, small business, NAICS 561210, NAICS 561720, NAICS 561730, government contractor, New York',
+  title: 'Burger Consulting LLC — Federal IT Services',
+  description: 'Burger Consulting LLC is a federally registered small business delivering custom software development, IT project management, and systems design to U.S. government agencies. NAICS 541511, 541519, 541512. New York, NY.',
+  keywords: 'federal IT services, custom software development, IT project management, systems design, Section 508, small business, NAICS 541511, NAICS 541519, NAICS 541512, government contractor, New York',
   openGraph: {
-    title: 'Burger Consulting LLC — Federal Facilities Services',
-    description: 'SBA-registered small business delivering professional facilities support, janitorial, and landscaping services to federal agencies nationwide.',
+    title: 'Burger Consulting LLC — Federal IT Services',
+    description: 'SBA-registered small business delivering custom software development, IT project management, and systems design to federal agencies nationwide.',
     type: 'website',
   },
 };
@@ -53,16 +53,16 @@ function Footer() {
           <div>
             <div style={{ color: 'var(--gold)', fontFamily: "'DM Serif Display', serif", fontSize: '1.1rem', marginBottom: '0.5rem' }}>Burger Consulting LLC</div>
             <div style={{ opacity: 0.7, fontSize: '0.875rem', lineHeight: 1.6 }}>
-              Federal facilities services provider. Small Business Entity registered with the U.S. Small Business Administration.
+              Federal IT services provider. Small Business Entity registered with the U.S. Small Business Administration.
             </div>
             <div style={{ marginTop: '1rem', opacity: 0.45, fontSize: '0.78rem' }}>EIN: 84-3113166 | DOS ID: 5624755</div>
           </div>
           <div>
             <div style={{ color: 'var(--gold)', fontWeight: 700, marginBottom: '0.75rem', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Service Areas</div>
             <div style={{ opacity: 0.7, fontSize: '0.875rem', lineHeight: 1.8 }}>
-              NAICS 561210 — Facilities Support<br />
-              NAICS 561720 — Janitorial Services<br />
-              NAICS 561730 — Landscaping Services
+              NAICS 541511 — Software Development<br />
+              NAICS 541519 — IT Services &amp; PM<br />
+              NAICS 541512 — Systems Design
             </div>
           </div>
           <div>
