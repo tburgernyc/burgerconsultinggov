@@ -102,7 +102,9 @@ export default function ProspectsPage() {
       .then(d => {
         setMsg(`Launched — ${d.launched} outreach email(s) sent. Follow-ups will fire automatically on Day 3 and Day 7.`);
         setView('campaigns');
-        loadCampaigns(selectedSol);
+        fetch(`${API}/api/outreach/campaigns/${selectedSol}`)
+          .then(r => r.json())
+          .then(data => setCampaigns(data.campaigns || []));
       })
       .catch(() => setMsg('Launch failed.'))
       .finally(() => setLaunching(false));
