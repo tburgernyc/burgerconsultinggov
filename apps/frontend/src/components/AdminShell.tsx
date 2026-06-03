@@ -23,6 +23,7 @@ const NAV = [
     group: 'PIPELINE',
     items: [
       { href: '/admin/solicitations', label: 'Solicitations', icon: '▦' },
+      { href: '/admin/prospects', label: 'Prospect Outreach', icon: '⟡' },
       { href: '/admin/proposals', label: 'AI Proposals', icon: '✦' },
     ],
   },

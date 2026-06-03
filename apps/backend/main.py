@@ -9,7 +9,7 @@ from psycopg2 import pool as pg_pool
 import resend
 from contextlib import asynccontextmanager
 from datetime import datetime, date, timedelta
-from fastapi import FastAPI, HTTPException, Query, Depends, Header
+from fastapi import FastAPI, HTTPException, Query, Depends, Header, Request
 from passlib.context import CryptContext
 import secrets as _secrets
 from fastapi.middleware.cors import CORSMiddleware
@@ -196,6 +196,68 @@ def email_ar_followup_sent(to: str, contract_number: str, agency: str,
         f'<p style="font-size:13px;color:#6b7a99">Follow-up #{1 if days_outstanding < 45 else 2} dispatched automatically by Hermes.</p>'
     )
     subject = f"A/R Follow-Up Sent — Contract {contract_number} — {days_outstanding} Days Outstanding"
+    _send_email(to, subject, _wrap(body))
+
+
+# ──────────────── Outreach Email Templates ────────────────
+
+def email_outreach_initial(to: str, entity_name: str, sol_id: str, agency: str,
+                            naics: str, sow_brief: str, quote_url: str,
+                            deadline_str: str, est_value: float) -> None:
+    value_line = f'${est_value:,.0f}' if est_value else 'See brief'
+    body = (
+        f'<h2 style="color:#1a2e4a;margin:0 0 8px;font-size:20px">Subcontract Quote Request</h2>'
+        f'<p style="margin:0 0 16px;color:#4b5563;font-size:14px">You are receiving this because your firm appears in the SAM.gov registry or USASpending.gov award history as a qualified provider for federal IT services work under <strong>NAICS {naics}</strong>.</p>'
+        '<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:16px;margin:16px 0">'
+        '<div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:#6b7a99;margin-bottom:10px">Solicitation Details</div>'
+        '<table style="width:100%;border-collapse:collapse">'
+        f'<tr><td style="padding:6px 0;color:#6b7a99;font-size:13px;width:40%">Solicitation ID</td><td style="padding:6px 0;font-weight:700;font-size:13px">{sol_id}</td></tr>'
+        f'<tr><td style="padding:6px 0;color:#6b7a99;font-size:13px">Issuing Agency</td><td style="padding:6px 0;font-size:13px">{agency or "Federal Agency"}</td></tr>'
+        f'<tr><td style="padding:6px 0;color:#6b7a99;font-size:13px">NAICS</td><td style="padding:6px 0;font-size:13px">{naics}</td></tr>'
+        f'<tr><td style="padding:6px 0;color:#6b7a99;font-size:13px">Estimated Value</td><td style="padding:6px 0;font-weight:700;font-size:13px">{value_line}</td></tr>'
+        f'<tr><td style="padding:6px 0;color:#6b7a99;font-size:13px">Quote Deadline</td><td style="padding:6px 0;font-weight:700;color:#d97706;font-size:13px">{deadline_str}</td></tr>'
+        '</table></div>'
+        '<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:14px;margin:16px 0">'
+        '<div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:#92400e;margin-bottom:8px">Scope of Work Summary</div>'
+        f'<div style="font-size:13px;color:#1a2e4a;line-height:1.7;white-space:pre-line">{sow_brief}</div>'
+        '</div>'
+        '<p style="font-size:14px;margin:20px 0 8px;color:#1a2e4a"><strong>What we need from you:</strong></p>'
+        '<ul style="margin:0 0 20px;padding-left:20px;font-size:13px;color:#4b5563;line-height:1.8">'
+        '<li>Labor categories and hourly rates</li>'
+        '<li>Period of performance you can commit to</li>'
+        '<li>Relevant tech stack / certifications</li>'
+        '<li>Acceptance of Pay-When-Paid terms (payment within 30 days of agency receipt)</li>'
+        '</ul>'
+        f'<a href="{quote_url}" style="display:inline-block;background:#1a2e4a;color:#fff;padding:12px 28px;border-radius:6px;text-decoration:none;font-weight:700;font-size:14px;margin-bottom:20px">Submit Your Quote →</a>'
+        '<p style="font-size:12px;color:#9ca3af;margin-top:20px">No account required — the link above takes you directly to the quote form. Burger Consulting LLC (EIN 84-3113166) is a SAM-registered small business prime contractor based in New York, NY.</p>'
+    )
+    subject = f"QUOTE REQUEST: {agency or 'Federal Agency'} | {sol_id} | NAICS {naics} | Due {deadline_str}"
+    _send_email(to, subject, _wrap(body))
+
+
+def email_outreach_followup1(to: str, entity_name: str, sol_id: str,
+                              agency: str, quote_url: str, deadline_str: str) -> None:
+    body = (
+        f'<h2 style="color:#1a2e4a;margin:0 0 8px;font-size:20px">Following Up — Quote Request for {sol_id}</h2>'
+        f'<p style="color:#4b5563;font-size:14px">We sent a subcontract quote request a few days ago for a federal IT services opportunity with <strong>{agency or "a federal agency"}</strong> (Solicitation <strong>{sol_id}</strong>) and wanted to follow up.</p>'
+        f'<p style="color:#4b5563;font-size:14px">The quote deadline is <strong style="color:#d97706">{deadline_str}</strong>. If your firm has capacity and the scope is a fit, we would welcome your submission.</p>'
+        f'<a href="{quote_url}" style="display:inline-block;background:#1a2e4a;color:#fff;padding:12px 28px;border-radius:6px;text-decoration:none;font-weight:700;font-size:14px;margin:20px 0">Submit Your Quote →</a>'
+        '<p style="font-size:12px;color:#9ca3af">If you are not interested or this is not a fit, no action needed — you will receive one final reminder before the deadline.</p>'
+    )
+    subject = f"Follow-Up: Quote Request — {sol_id} — {agency or 'Federal Agency'}"
+    _send_email(to, subject, _wrap(body))
+
+
+def email_outreach_followup2(to: str, entity_name: str, sol_id: str,
+                              agency: str, quote_url: str, deadline_str: str) -> None:
+    body = (
+        f'<h2 style="color:#d97706;margin:0 0 8px;font-size:20px">Final Notice — Quote Deadline Approaching</h2>'
+        f'<p style="color:#4b5563;font-size:14px">This is the final outreach for the subcontract quote request on <strong>{sol_id}</strong> with <strong>{agency or "a federal agency"}</strong>.</p>'
+        f'<p style="color:#4b5563;font-size:14px">Quote deadline: <strong style="color:#dc2626">{deadline_str}</strong>. After this date we will finalize our team and this opportunity will close.</p>'
+        f'<a href="{quote_url}" style="display:inline-block;background:#d97706;color:#fff;padding:12px 28px;border-radius:6px;text-decoration:none;font-weight:700;font-size:14px;margin:20px 0">Submit Quote Now →</a>'
+        '<p style="font-size:12px;color:#9ca3af">After this email you will not receive further outreach on this solicitation. To be added to our standing vendor registry for future opportunities, visit burgergov.com/portal/register.</p>'
+    )
+    subject = f"FINAL NOTICE: Quote Deadline {deadline_str} — {sol_id}"
     _send_email(to, subject, _wrap(body))
 
 
@@ -687,6 +749,78 @@ async def cron_usaspending_intelligence() -> None:
         print(f"[CRON ERROR] USASpending intelligence: {exc}")
 
 
+async def cron_outreach_followup() -> None:
+    """Daily 9:00 AM ET — send Day 3 and Day 7 follow-ups for active outreach campaigns."""
+    print("[CRON] Running outreach follow-up sequence...")
+    conn = None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        admin_domain = os.getenv("NEXTAUTH_URL", "https://www.burgergov.com")
+
+        # Day 3 follow-ups: sent Day 0 3+ days ago, no Day 3 yet, not submitted/bounced
+        cur.execute("""
+            SELECT oc.id, oc.quote_token, oc.solicitation_id, vp.contact_email,
+                   vp.entity_name, sq.agency, oc.day0_sent_at,
+                   sq.response_deadline
+            FROM outreach_campaigns oc
+            JOIN vendor_prospects vp ON oc.prospect_id = vp.id
+            JOIN solicitation_queue sq ON oc.solicitation_id = sq.solicitation_id
+            WHERE oc.status = 'SENT'
+              AND oc.day0_sent_at IS NOT NULL
+              AND oc.day3_sent_at IS NULL
+              AND oc.day0_sent_at <= NOW() - INTERVAL '3 days'
+              AND sq.response_deadline > NOW()
+        """)
+        day3_rows = cur.fetchall()
+        for row in day3_rows:
+            campaign_id, token, sol_id, email, name, agency, _, deadline = row
+            if not email:
+                continue
+            deadline_str = deadline.strftime("%B %d, %Y") if deadline else "TBD"
+            quote_url = f"{admin_domain}/quote/{token}"
+            try:
+                email_outreach_followup1(email, name, sol_id, agency, quote_url, deadline_str)
+                cur.execute("UPDATE outreach_campaigns SET day3_sent_at=NOW(), status='SENT' WHERE id=%s::uuid", (str(campaign_id),))
+                conn.commit()
+            except Exception as e:
+                print(f"[CRON] Follow-up D3 failed for campaign {campaign_id}: {e}")
+
+        # Day 7 follow-ups: sent Day 3 4+ days ago, no Day 7 yet
+        cur.execute("""
+            SELECT oc.id, oc.quote_token, oc.solicitation_id, vp.contact_email,
+                   vp.entity_name, sq.agency, sq.response_deadline
+            FROM outreach_campaigns oc
+            JOIN vendor_prospects vp ON oc.prospect_id = vp.id
+            JOIN solicitation_queue sq ON oc.solicitation_id = sq.solicitation_id
+            WHERE oc.status = 'SENT'
+              AND oc.day3_sent_at IS NOT NULL
+              AND oc.day7_sent_at IS NULL
+              AND oc.day3_sent_at <= NOW() - INTERVAL '4 days'
+              AND sq.response_deadline > NOW()
+        """)
+        day7_rows = cur.fetchall()
+        for row in day7_rows:
+            campaign_id, token, sol_id, email, name, agency, deadline = row
+            if not email:
+                continue
+            deadline_str = deadline.strftime("%B %d, %Y") if deadline else "TBD"
+            quote_url = f"{admin_domain}/quote/{token}"
+            try:
+                email_outreach_followup2(email, name, sol_id, agency, quote_url, deadline_str)
+                cur.execute("UPDATE outreach_campaigns SET day7_sent_at=NOW() WHERE id=%s::uuid", (str(campaign_id),))
+                conn.commit()
+            except Exception as e:
+                print(f"[CRON] Follow-up D7 failed for campaign {campaign_id}: {e}")
+
+        print(f"[CRON] Outreach follow-ups: {len(day3_rows)} Day-3, {len(day7_rows)} Day-7 sent.")
+    except Exception as exc:
+        print(f"[CRON ERROR] Outreach follow-up: {exc}")
+    finally:
+        if conn:
+            conn.close()
+
+
 # ──────────────── Database ────────────────
 
 _pool: "pg_pool.ThreadedConnectionPool | None" = None
@@ -954,6 +1088,41 @@ CREATE TABLE IF NOT EXISTS ar_followups (
   followup_type TEXT,
   followup_sent_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+CREATE TABLE IF NOT EXISTS vendor_prospects (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  source TEXT NOT NULL,                        -- SAM_GOV | USASPENDING | MANUAL
+  entity_name TEXT NOT NULL,
+  uei TEXT,
+  cage_code TEXT,
+  contact_name TEXT,
+  contact_email TEXT,
+  contact_phone TEXT,
+  naics_codes TEXT[],
+  city TEXT,
+  state TEXT,
+  business_types TEXT[],                       -- SB, 8A, HUBZONE, SDVOSB, etc.
+  past_performance JSONB,                      -- array of {agency, naics, award_amount, year}
+  qualification_score INTEGER,                 -- 1-10 AI score vs current solicitation
+  status TEXT DEFAULT 'DISCOVERED',            -- DISCOVERED | OUTREACH_SENT | RESPONDED | QUALIFIED | REJECTED | REGISTERED
+  notes TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS outreach_campaigns (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  solicitation_id TEXT REFERENCES solicitation_queue(solicitation_id) ON DELETE CASCADE,
+  prospect_id UUID REFERENCES vendor_prospects(id) ON DELETE CASCADE,
+  quote_token UUID DEFAULT gen_random_uuid() UNIQUE,
+  sow_brief TEXT,
+  status TEXT DEFAULT 'PENDING',               -- PENDING | SENT | OPENED | CLICKED | SUBMITTED | BOUNCED | OPT_OUT
+  day0_sent_at TIMESTAMPTZ,
+  day3_sent_at TIMESTAMPTZ,
+  day7_sent_at TIMESTAMPTZ,
+  submitted_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
 """
 
 MIGRATIONS_SQL = """
@@ -986,6 +1155,9 @@ ALTER TABLE vendor_registry ADD COLUMN IF NOT EXISTS hourly_rate_min NUMERIC;
 ALTER TABLE vendor_registry ADD COLUMN IF NOT EXISTS hourly_rate_max NUMERIC;
 ALTER TABLE vendor_registry ADD COLUMN IF NOT EXISTS section_508_certified BOOLEAN DEFAULT false;
 ALTER TABLE global_directives ADD COLUMN IF NOT EXISTS it_framework JSONB;
+ALTER TABLE vendor_prospects ADD COLUMN IF NOT EXISTS uei TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS vendor_prospects_uei_idx ON vendor_prospects(uei) WHERE uei IS NOT NULL;
+ALTER TABLE vendor_registry ADD COLUMN IF NOT EXISTS onboarding_status TEXT DEFAULT 'PENDING';
 """
 
 
@@ -1032,8 +1204,10 @@ async def lifespan(app: FastAPI):
     scheduler.add_job(cron_usaspending_intelligence, CronTrigger(hour=6, minute=0))
     # A/R aging check — 5:00 PM ET
     scheduler.add_job(cron_ar_aging, CronTrigger(hour=17, minute=0))
+    # Outreach follow-up sequence — 9:00 AM ET
+    scheduler.add_job(cron_outreach_followup, CronTrigger(hour=9, minute=0))
     scheduler.start()
-    print("[CRON] Scheduler started — SAM scan 7/11/15/19h, expiry 8h, deadline 7:30h, intelligence 6h, AR 17h ET")
+    print("[CRON] Scheduler started — SAM scan 7/11/15/19h, expiry 8h, deadline 7:30h, intelligence 6h, AR 17h, outreach followup 9h ET")
 
     yield
 
@@ -2484,3 +2658,447 @@ async def get_financials(_: None = Depends(_require_admin)):
         "bids_won": int(won),
         "bids_total": int(wr[2] or 0),
     }
+
+
+# ──────────────── Prospect Discovery & Outreach ────────────────
+
+@app.get("/api/prospects/discover/{sol_id}")
+async def discover_prospects(sol_id: str, _: None = Depends(_require_admin)):
+    """
+    Query SAM.gov Entity Management API + USASpending award winners for
+    qualified IT vendors matching this solicitation's NAICS. Returns AI-scored
+    prospect list — does not persist until /api/outreach/launch is called.
+    """
+    sam_key = os.getenv("SAM_API_KEY", "")
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT naics, agency, estimated_value FROM solicitation_queue WHERE solicitation_id=%s", (sol_id,))
+    sol = cur.fetchone()
+    cur.close()
+    conn.close()
+
+    if not sol:
+        raise HTTPException(status_code=404, detail="Solicitation not found")
+
+    naics_code = sol[0] or "541511"
+    agency = sol[1] or ""
+    est_value = float(sol[2] or 0)
+
+    prospects: list[dict] = []
+
+    # ── Source 1: SAM.gov Entity Management API ──
+    if sam_key and not sam_key.startswith("placeholder"):
+        try:
+            params = {
+                "api_key": sam_key,
+                "naicsCode": naics_code,
+                "registrationStatus": "A",
+                "purposeOfRegistrationCode": "Z2",  # all awards
+                "businessTypeCode": "2L",            # small business
+                "includeSections": "entityRegistration,coreData,assertions,repsAndCerts",
+                "limit": 100,
+            }
+            resp = requests.get(
+                "https://api.sam.gov/entity-information/v3/entities",
+                params=params, timeout=20
+            )
+            if resp.status_code == 200:
+                entities = resp.json().get("entityData", [])
+                for e in entities:
+                    reg = e.get("entityRegistration", {})
+                    core = e.get("coreData", {})
+                    poc = core.get("electronicBusinessPOC", {}) or core.get("governmentBusinessPOC", {}) or {}
+                    addr = core.get("physicalAddress", {})
+                    prospects.append({
+                        "source": "SAM_GOV",
+                        "entity_name": reg.get("legalBusinessName", ""),
+                        "uei": reg.get("ueiSAM", ""),
+                        "cage_code": reg.get("cageCode", ""),
+                        "contact_name": f"{poc.get('firstName','')} {poc.get('lastName','')}".strip(),
+                        "contact_email": poc.get("electronicBusinessPOC", {}).get("email") or poc.get("email", ""),
+                        "contact_phone": poc.get("usPhone", ""),
+                        "naics_codes": [naics_code],
+                        "city": addr.get("city", ""),
+                        "state": addr.get("stateOrProvinceCode", ""),
+                        "business_types": reg.get("businessTypes", []),
+                        "past_performance": [],
+                    })
+        except Exception as e:
+            print(f"[DISCOVERY] SAM.gov fetch error: {e}")
+
+    # ── Source 2: USASpending — award winners in same NAICS ──
+    try:
+        payload = {
+            "filters": {
+                "award_type_codes": ["A", "B", "C", "D"],
+                "naics_codes": [naics_code, "541511", "541519", "541512"],
+                "time_period": [{
+                    "start_date": (date.today() - timedelta(days=365 * 3)).strftime("%Y-%m-%d"),
+                    "end_date": date.today().strftime("%Y-%m-%d"),
+                }],
+            },
+            "fields": ["Recipient Name", "Award Amount", "Recipient UEI", "NAICS Code",
+                       "Start Date", "Awarding Agency", "recipient_location_state_code",
+                       "recipient_location_city_name"],
+            "sort": "Award Amount",
+            "order": "desc",
+            "limit": 100,
+            "page": 1,
+        }
+        resp = requests.post(
+            "https://api.usaspending.gov/api/v2/search/spending_by_award/",
+            json=payload, timeout=20
+        )
+        if resp.status_code == 200:
+            seen_ueis: set[str] = {p.get("uei", "") for p in prospects}
+            for award in resp.json().get("results", []):
+                uei = award.get("Recipient UEI", "")
+                if uei in seen_ueis:
+                    # Enrich existing prospect with past performance
+                    for p in prospects:
+                        if p.get("uei") == uei:
+                            p["past_performance"].append({
+                                "agency": award.get("Awarding Agency", ""),
+                                "naics": award.get("NAICS Code", ""),
+                                "award_amount": award.get("Award Amount", 0),
+                                "year": (award.get("Start Date") or "")[:4],
+                            })
+                    continue
+                seen_ueis.add(uei)
+                prospects.append({
+                    "source": "USASPENDING",
+                    "entity_name": award.get("Recipient Name", ""),
+                    "uei": uei,
+                    "cage_code": "",
+                    "contact_name": "",
+                    "contact_email": "",
+                    "contact_phone": "",
+                    "naics_codes": [award.get("NAICS Code", naics_code)],
+                    "city": award.get("recipient_location_city_name", ""),
+                    "state": award.get("recipient_location_state_code", ""),
+                    "business_types": [],
+                    "past_performance": [{
+                        "agency": award.get("Awarding Agency", ""),
+                        "naics": award.get("NAICS Code", ""),
+                        "award_amount": award.get("Award Amount", 0),
+                        "year": (award.get("Start Date") or "")[:4],
+                    }],
+                })
+    except Exception as e:
+        print(f"[DISCOVERY] USASpending fetch error: {e}")
+
+    if not prospects:
+        return {"solicitation_id": sol_id, "prospects": [], "total": 0}
+
+    # ── AI Qualification Scoring ──
+    prospects_summary = "\n".join([
+        f"{i+1}. {p['entity_name']} | Source: {p['source']} | "
+        f"NAICS: {','.join(p['naics_codes'])} | State: {p['state']} | "
+        f"Past perf: {len(p['past_performance'])} federal award(s) | "
+        f"Business types: {','.join(p['business_types']) or 'unknown'}"
+        for i, p in enumerate(prospects[:50])
+    ])
+
+    scoring_prompt = f"""You are evaluating subcontractor prospects for Burger Consulting LLC (BCG),
+a federal IT services prime contractor (NAICS 541511/541519/541512).
+
+Solicitation: {sol_id} | Agency: {agency} | NAICS: {naics_code} | Est. Value: ${est_value:,.0f}
+
+Score each prospect 1-10 for fit as a BCG subcontractor:
+- 9-10: Proven federal IT past performance, NAICS match, small business, remote-capable
+- 7-8: Some federal experience or strong NAICS match
+- 5-6: NAICS adjacent or limited federal history
+- 1-4: No evident federal IT capability or NAICS mismatch
+
+PROSPECTS:
+{prospects_summary}
+
+Return JSON: {{"scores": [{{"index": 1, "score": 8, "reason": "one sentence"}}]}}
+Only include index and score and reason. Return exactly {min(len(prospects), 50)} entries."""
+
+    try:
+        score_resp = client.models.generate_content(
+            model="gemini-2.5-pro",
+            contents=[scoring_prompt],
+            config=types.GenerateContentConfig(response_mime_type="application/json", temperature=0.1)
+        )
+        score_data = json.loads(score_resp.text)
+        scores = {s["index"]: (s["score"], s.get("reason", "")) for s in score_data.get("scores", [])}
+    except Exception as e:
+        print(f"[DISCOVERY] Gemini scoring error: {e}")
+        scores = {}
+
+    for i, p in enumerate(prospects[:50]):
+        score, reason = scores.get(i + 1, (5, ""))
+        p["qualification_score"] = score
+        p["score_reason"] = reason
+
+    prospects.sort(key=lambda p: p.get("qualification_score", 0), reverse=True)
+    return {"solicitation_id": sol_id, "prospects": prospects[:50], "total": len(prospects)}
+
+
+@app.post("/api/outreach/launch/{sol_id}")
+async def launch_outreach(sol_id: str, request: Request, _: None = Depends(_require_admin)):
+    """
+    Persist selected prospects and send Day 0 outreach emails with tokenized quote links.
+    Body: {"prospect_indices": [0,1,2,...], "prospects": [...full array from discover...]}
+    """
+    body = await request.json()
+    selected_indices: list[int] = body.get("prospect_indices", [])
+    all_prospects: list[dict] = body.get("prospects", [])
+    selected = [all_prospects[i] for i in selected_indices if i < len(all_prospects)]
+
+    if not selected:
+        raise HTTPException(status_code=400, detail="No prospects selected")
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    # Fetch solicitation context
+    cur.execute("""
+        SELECT agency, naics, estimated_value, response_deadline, pdf_url
+        FROM solicitation_queue WHERE solicitation_id=%s
+    """, (sol_id,))
+    sol = cur.fetchone()
+    if not sol:
+        cur.close()
+        conn.close()
+        raise HTTPException(status_code=404, detail="Solicitation not found")
+    agency, naics, est_value, deadline, pdf_url = sol
+    deadline_str = deadline.strftime("%B %d, %Y") if deadline else "TBD"
+
+    # Generate SOW brief via Gemini
+    brief_prompt = f"""Write a concise, professional subcontract scope brief for this federal IT solicitation.
+Solicitation: {sol_id} | Agency: {agency} | NAICS: {naics} | Value: ${float(est_value or 0):,.0f} | Deadline: {deadline_str}
+
+The brief is sent to prospective subcontractors to explain the scope and get a quote.
+Write 4-6 bullet points describing: deliverable type, key technical requirements, period of performance,
+any special requirements (Section 508, security, remote OK, etc.), and contract type.
+Keep it plain-text, factual, under 150 words. Start each bullet with a dash."""
+
+    sow_brief = ""
+    try:
+        brief_resp = client.models.generate_content(
+            model="gemini-2.5-pro", contents=[brief_prompt],
+            config=types.GenerateContentConfig(temperature=0.2)
+        )
+        sow_brief = brief_resp.text.strip()
+    except Exception as e:
+        print(f"[OUTREACH] SOW brief generation error: {e}")
+        sow_brief = f"Federal IT services solicitation {sol_id} — {agency or 'Federal Agency'}. NAICS {naics}. Estimated value ${float(est_value or 0):,.0f}. Deadline {deadline_str}."
+
+    admin_domain = os.getenv("NEXTAUTH_URL", "https://www.burgergov.com")
+    launched, failed = 0, 0
+
+    for p in selected:
+        # Upsert prospect record
+        cur.execute("""
+            INSERT INTO vendor_prospects
+                (source, entity_name, uei, cage_code, contact_name, contact_email,
+                 contact_phone, naics_codes, city, state, business_types,
+                 past_performance, qualification_score, status)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'OUTREACH_SENT')
+            ON CONFLICT (uei) DO UPDATE SET
+                contact_email = EXCLUDED.contact_email,
+                qualification_score = EXCLUDED.qualification_score,
+                status = 'OUTREACH_SENT', updated_at = NOW()
+            RETURNING id
+        """, (
+            p.get("source", "MANUAL"), p["entity_name"],
+            p.get("uei") or None, p.get("cage_code") or None,
+            p.get("contact_name") or None, p.get("contact_email") or None,
+            p.get("contact_phone") or None,
+            p.get("naics_codes", [naics]),
+            p.get("city") or None, p.get("state") or None,
+            p.get("business_types", []),
+            json.dumps(p.get("past_performance", [])),
+            p.get("qualification_score", 5),
+        ))
+        row = cur.fetchone()
+        if not row:
+            continue
+        prospect_id = row[0]
+
+        # Create campaign record
+        cur.execute("""
+            INSERT INTO outreach_campaigns
+                (solicitation_id, prospect_id, sow_brief, status, day0_sent_at)
+            VALUES (%s, %s::uuid, %s, 'SENT', NOW())
+            RETURNING id, quote_token
+        """, (sol_id, str(prospect_id), sow_brief))
+        camp = cur.fetchone()
+        if not camp:
+            continue
+        campaign_id, quote_token = camp
+
+        # Send email if address available
+        email_addr = p.get("contact_email", "")
+        if email_addr and "@" in email_addr:
+            quote_url = f"{admin_domain}/quote/{quote_token}"
+            try:
+                email_outreach_initial(
+                    email_addr, p["entity_name"], sol_id, agency or "",
+                    naics or "", sow_brief, quote_url, deadline_str,
+                    float(est_value or 0)
+                )
+                launched += 1
+            except Exception as e:
+                print(f"[OUTREACH] Email send failed for {email_addr}: {e}")
+                failed += 1
+        else:
+            launched += 1  # Persisted but no email (manual follow-up needed)
+
+        conn.commit()
+
+    cur.close()
+    conn.close()
+    return {"solicitation_id": sol_id, "launched": launched, "failed": failed, "sow_brief": sow_brief}
+
+
+@app.get("/api/outreach/campaigns/{sol_id}")
+async def get_outreach_campaigns(sol_id: str, _: None = Depends(_require_admin)):
+    """Return outreach campaign status for a solicitation."""
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT oc.id, oc.quote_token, vp.entity_name, vp.contact_email, vp.contact_name,
+               vp.qualification_score, vp.city, vp.state, vp.source,
+               oc.status, oc.day0_sent_at, oc.day3_sent_at, oc.day7_sent_at, oc.submitted_at
+        FROM outreach_campaigns oc
+        JOIN vendor_prospects vp ON oc.prospect_id = vp.id
+        WHERE oc.solicitation_id = %s
+        ORDER BY vp.qualification_score DESC, oc.day0_sent_at DESC
+    """, (sol_id,))
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+    return {"solicitation_id": sol_id, "campaigns": [{
+        "campaign_id": str(r[0]),
+        "quote_token": str(r[1]),
+        "entity_name": r[2],
+        "contact_email": r[3],
+        "contact_name": r[4],
+        "qualification_score": r[5],
+        "city": r[6],
+        "state": r[7],
+        "source": r[8],
+        "status": r[9],
+        "day0_sent_at": r[10].isoformat() if r[10] else None,
+        "day3_sent_at": r[11].isoformat() if r[11] else None,
+        "day7_sent_at": r[12].isoformat() if r[12] else None,
+        "submitted_at": r[13].isoformat() if r[13] else None,
+    } for r in rows]}
+
+
+@app.get("/api/quote/{token}")
+async def get_quote_brief(token: str):
+    """Public endpoint — returns solicitation brief for tokenized quote form. No auth required."""
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT oc.sow_brief, oc.solicitation_id, sq.agency, sq.naics,
+               sq.estimated_value, sq.response_deadline, vp.entity_name, vp.contact_name
+        FROM outreach_campaigns oc
+        JOIN solicitation_queue sq ON oc.solicitation_id = sq.solicitation_id
+        JOIN vendor_prospects vp ON oc.prospect_id = vp.id
+        WHERE oc.quote_token = %s::uuid
+          AND oc.status NOT IN ('SUBMITTED', 'OPT_OUT', 'BOUNCED')
+    """, (token,))
+    row = cur.fetchone()
+    cur.close()
+    conn.close()
+    if not row:
+        raise HTTPException(status_code=404, detail="Quote link not found or already submitted")
+    return {
+        "sow_brief": row[0],
+        "solicitation_id": row[1],
+        "agency": row[2],
+        "naics": row[3],
+        "estimated_value": float(row[4]) if row[4] else None,
+        "response_deadline": row[5].isoformat() if row[5] else None,
+        "entity_name": row[6],
+        "contact_name": row[7],
+    }
+
+
+class ProspectQuoteRequest(BaseModel):
+    vendor_name: str
+    contact_name: str
+    contact_email: str
+    labor_categories: list[dict]   # [{title, hours, rate}]
+    total_amount: float
+    period_of_performance: str
+    tech_stack: Optional[list[str]] = None
+    deliverables: Optional[str] = None
+    pay_when_paid_accepted: bool = False
+    notes: Optional[str] = None
+
+
+@app.post("/api/quote/{token}")
+async def submit_prospect_quote(token: str, request: ProspectQuoteRequest):
+    """Public endpoint — prospect submits quote via tokenized link. No auth required."""
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT oc.id, oc.prospect_id, oc.solicitation_id
+        FROM outreach_campaigns oc
+        WHERE oc.quote_token = %s::uuid
+          AND oc.status NOT IN ('SUBMITTED', 'OPT_OUT', 'BOUNCED')
+    """, (token,))
+    row = cur.fetchone()
+    if not row:
+        cur.close()
+        conn.close()
+        raise HTTPException(status_code=404, detail="Quote link not found or already used")
+
+    campaign_id, prospect_id, sol_id = row
+
+    # Upsert vendor into registry if not already present
+    cur.execute("""
+        INSERT INTO vendor_registry
+            (legal_name, contact_name, email, pay_when_paid_accepted,
+             tech_stack, onboarding_status, portal_access)
+        VALUES (%s, %s, %s, %s, %s, 'PROSPECT_QUOTE', false)
+        ON CONFLICT (email) DO UPDATE SET
+            legal_name = EXCLUDED.legal_name,
+            pay_when_paid_accepted = EXCLUDED.pay_when_paid_accepted,
+            tech_stack = EXCLUDED.tech_stack
+        RETURNING id
+    """, (
+        request.vendor_name, request.contact_name, request.contact_email,
+        request.pay_when_paid_accepted,
+        request.tech_stack or [],
+    ))
+    vendor_row = cur.fetchone()
+    vendor_id = vendor_row[0] if vendor_row else None
+
+    # Insert quote into vendor_quotes
+    if vendor_id:
+        cur.execute("""
+            INSERT INTO vendor_quotes
+                (solicitation_id, vendor_id, total_amount, period_of_performance,
+                 pay_when_paid_accepted, tech_stack, deliverables, notes)
+            VALUES (%s, %s::uuid, %s, %s, %s, %s, %s, %s)
+        """, (
+            sol_id, str(vendor_id), request.total_amount,
+            request.period_of_performance, request.pay_when_paid_accepted,
+            request.tech_stack or [], request.deliverables or "",
+            json.dumps({"labor_categories": request.labor_categories, "notes": request.notes or ""}),
+        ))
+
+    # Mark campaign submitted and update prospect status
+    cur.execute("""
+        UPDATE outreach_campaigns SET status='SUBMITTED', submitted_at=NOW()
+        WHERE id=%s::uuid
+    """, (str(campaign_id),))
+    cur.execute("""
+        UPDATE vendor_prospects SET status='RESPONDED', updated_at=NOW()
+        WHERE id=%s::uuid
+    """, (str(prospect_id),))
+
+    conn.commit()
+    cur.close()
+    conn.close()
+    return {"success": True, "message": "Quote received. Burger Consulting LLC will be in touch within 48 hours."}
