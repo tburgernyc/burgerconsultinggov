@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { AdminShell } from '@/components/AdminShell';
 
 const API = '/api/proxy';
@@ -27,6 +28,9 @@ const fmt = (n: number) => n ? '$' + Number(n).toLocaleString('en-US', { maximum
 const PAGE_LOAD_TIME = Date.now();
 
 export default function ProspectsPage() {
+  const searchParams = useSearchParams();
+  const solFromUrl = searchParams.get('sol') || '';
+
   const [solicitations, setSolicitations] = useState<Solicitation[]>([]);
   const [selectedSol, setSelectedSol] = useState('');
   const [prospects, setProspects] = useState<Prospect[]>([]);
@@ -46,10 +50,11 @@ export default function ProspectsPage() {
           ? d.filter((s: Solicitation) => !['REJECTED', 'AWARDED'].includes(s.phase_status))
           : [];
         setSolicitations(active);
-        if (active.length > 0) setSelectedSol(active[0].solicitation_id);
+        const preselect = solFromUrl && active.find((s: Solicitation) => s.solicitation_id === solFromUrl);
+        setSelectedSol(preselect ? solFromUrl : active.length > 0 ? active[0].solicitation_id : '');
       })
       .finally(() => setLoading(false));
-  }, []);
+  }, [solFromUrl]);
 
   useEffect(() => {
     if (!selectedSol) return;

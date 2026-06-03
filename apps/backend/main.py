@@ -486,6 +486,7 @@ async def cron_sam_scan() -> None:
             "active": "true",
             "limit": 100,
             "postedFrom": (date.today() - timedelta(days=1)).strftime("%m/%d/%Y"),
+            "postedTo": date.today().strftime("%m/%d/%Y"),
         }
         resp = requests.get(
             "https://api.sam.gov/opportunities/v2/search",
@@ -1156,8 +1157,10 @@ ALTER TABLE vendor_registry ADD COLUMN IF NOT EXISTS hourly_rate_max NUMERIC;
 ALTER TABLE vendor_registry ADD COLUMN IF NOT EXISTS section_508_certified BOOLEAN DEFAULT false;
 ALTER TABLE global_directives ADD COLUMN IF NOT EXISTS it_framework JSONB;
 ALTER TABLE vendor_prospects ADD COLUMN IF NOT EXISTS uei TEXT;
+ALTER TABLE vendor_prospects ADD COLUMN IF NOT EXISTS entity_url TEXT;
 CREATE UNIQUE INDEX IF NOT EXISTS vendor_prospects_uei_idx ON vendor_prospects(uei) WHERE uei IS NOT NULL;
 ALTER TABLE vendor_registry ADD COLUMN IF NOT EXISTS onboarding_status TEXT DEFAULT 'PENDING';
+CREATE UNIQUE INDEX IF NOT EXISTS vendor_registry_email_idx ON vendor_registry(email) WHERE email IS NOT NULL;
 """
 
 
@@ -2423,6 +2426,17 @@ async def morning_brief(_: None = Depends(_require_admin)):
                         "hours_left": max(0, int((r[2].replace(tzinfo=None) - datetime.utcnow()).total_seconds() / 3600)) if r[2] else None}
                        for r in cur.fetchall()]
 
+    # Outreach campaign summary
+    cur.execute("""
+        SELECT
+          COUNT(*) FILTER (WHERE oc.status = 'SENT') as active_campaigns,
+          COUNT(*) FILTER (WHERE oc.status = 'SUBMITTED') as quotes_received,
+          COUNT(DISTINCT oc.solicitation_id) FILTER (WHERE oc.status NOT IN ('OPT_OUT','BOUNCED')) as solicitations_in_outreach
+        FROM outreach_campaigns oc
+        WHERE oc.day0_sent_at >= NOW() - INTERVAL '30 days'
+    """)
+    outreach_row = cur.fetchone()
+
     cur.close()
     conn.close()
 
@@ -2439,6 +2453,11 @@ async def morning_brief(_: None = Depends(_require_admin)):
             "accounts_receivable": float(ar),
         },
         "deadline_alerts": deadline_alerts,
+        "outreach_summary": {
+            "active_campaigns": int(outreach_row[0] or 0),
+            "quotes_received": int(outreach_row[1] or 0),
+            "solicitations_in_outreach": int(outreach_row[2] or 0),
+        },
     }
 
 
@@ -2688,16 +2707,16 @@ async def discover_prospects(sol_id: str, _: None = Depends(_require_admin)):
     prospects: list[dict] = []
 
     # ── Source 1: SAM.gov Entity Management API ──
+    # Public tier returns name/address/NAICS/UEI — contact email requires elevated API access.
+    # Entity website URL is surfaced as a proxy for contact enrichment.
     if sam_key and not sam_key.startswith("placeholder"):
         try:
             params = {
                 "api_key": sam_key,
                 "naicsCode": naics_code,
                 "registrationStatus": "A",
-                "purposeOfRegistrationCode": "Z2",  # all awards
-                "businessTypeCode": "2L",            # small business
-                "includeSections": "entityRegistration,coreData,assertions,repsAndCerts",
-                "limit": 100,
+                "countryCode": "USA",           # US entities only
+                "includeSections": "entityRegistration,coreData,assertions,pointsOfContact",
             }
             resp = requests.get(
                 "https://api.sam.gov/entity-information/v3/entities",
@@ -2708,20 +2727,43 @@ async def discover_prospects(sol_id: str, _: None = Depends(_require_admin)):
                 for e in entities:
                     reg = e.get("entityRegistration", {})
                     core = e.get("coreData", {})
-                    poc = core.get("electronicBusinessPOC", {}) or core.get("governmentBusinessPOC", {}) or {}
+                    assertions = e.get("assertions", {})
+                    pocs = e.get("pointsOfContact", {})
                     addr = core.get("physicalAddress", {})
+                    entity_info = core.get("entityInformation", {})
+                    biz_types = core.get("businessTypes", {})
+
+                    # Best available POC: electronic business > government business
+                    poc = pocs.get("electronicBusinessPOC") or pocs.get("governmentBusinessPOC") or {}
+                    contact_name = f"{poc.get('firstName','') or ''} {poc.get('lastName','') or ''}".strip()
+
+                    # NAICS codes from assertions
+                    naics_list = [
+                        n["naicsCode"] for n in
+                        assertions.get("goodsAndServices", {}).get("naicsList", [])
+                        if n.get("naicsCode")
+                    ] or [naics_code]
+
+                    # Business type descriptions
+                    bt_list = [
+                        bt.get("businessTypeDesc", "")
+                        for bt in biz_types.get("businessTypeList", [])
+                        if bt.get("businessTypeDesc")
+                    ]
+
                     prospects.append({
                         "source": "SAM_GOV",
                         "entity_name": reg.get("legalBusinessName", ""),
                         "uei": reg.get("ueiSAM", ""),
                         "cage_code": reg.get("cageCode", ""),
-                        "contact_name": f"{poc.get('firstName','')} {poc.get('lastName','')}".strip(),
-                        "contact_email": poc.get("electronicBusinessPOC", {}).get("email") or poc.get("email", ""),
-                        "contact_phone": poc.get("usPhone", ""),
-                        "naics_codes": [naics_code],
+                        "contact_name": contact_name,
+                        "contact_email": "",   # not available on public API tier
+                        "contact_phone": "",
+                        "entity_url": entity_info.get("entityURL", ""),
+                        "naics_codes": naics_list,
                         "city": addr.get("city", ""),
                         "state": addr.get("stateOrProvinceCode", ""),
-                        "business_types": reg.get("businessTypes", []),
+                        "business_types": bt_list,
                         "past_performance": [],
                     })
         except Exception as e:

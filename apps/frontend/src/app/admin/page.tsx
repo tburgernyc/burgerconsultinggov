@@ -11,6 +11,7 @@ type MorningBrief = {
   approval_queue: { vendor_applications: VendorApp[]; rfq_dispatch_queue: Rfq[]; };
   active_contract_health: ContractHealth[];
   financial_snapshot: { pipeline_value: number; projected_revenue_15pct: number; accounts_receivable: number; };
+  outreach_summary: { active_campaigns: number; quotes_received: number; solicitations_in_outreach: number; };
 };
 type Opportunity = { solicitation_id: string; agency: string; naics: string; estimated_value: number; triage_score: number; status: string; };
 type VendorApp = { id: string; legal_name: string; email: string; onboarding_status: string; hours_in_queue: number; };
@@ -48,6 +49,7 @@ export default function AdminDashboard() {
   }
 
   const fin = brief?.financial_snapshot;
+  const outreach = brief?.outreach_summary;
   const vendors = brief?.approval_queue?.vendor_applications || [];
   const rfqs = brief?.approval_queue?.rfq_dispatch_queue || [];
   const pendingCount = vendors.length + rfqs.length;
@@ -76,6 +78,7 @@ export default function AdminDashboard() {
                 { label: 'Projected Revenue', val: fmt(fin?.projected_revenue_15pct || 0), sub: 'At 15% prime margin', icon: '📈', accent: 'var(--pv-success)' },
                 { label: 'Accounts Receivable', val: fmt(fin?.accounts_receivable || 0), sub: 'Outstanding invoices', icon: '⏳', accent: 'var(--pv-warning)' },
                 { label: 'New Opportunities', val: String(opps.length), sub: 'Last 24 hours from SAM', icon: '🔍', accent: 'var(--pv-gold)' },
+                { label: 'Active Outreach', val: String(outreach?.active_campaigns || 0), sub: `${outreach?.quotes_received || 0} quote${(outreach?.quotes_received || 0) !== 1 ? 's' : ''} received`, icon: '📡', accent: '#7C3AED' },
               ].map((card, i) => (
                 <div key={card.label} className={`pv-stat pv-fade pv-d${i + 1}`}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>

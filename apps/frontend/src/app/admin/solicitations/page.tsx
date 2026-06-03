@@ -148,6 +148,9 @@ export default function SolicitationPipelinePage() {
                             {!s.triage_score && (
                               <button onClick={() => runTriage(s.solicitation_id)} className="pv-btn pv-btn-primary pv-btn-sm">Triage</button>
                             )}
+                            {s.status === 'READY_FOR_SOURCING' && (
+                              <Link href={`/admin/prospects?sol=${s.solicitation_id}`} className="pv-btn pv-btn-primary pv-btn-sm">Outreach →</Link>
+                            )}
                           </div>
                         </td>
                       </tr>
