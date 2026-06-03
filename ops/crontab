@@ -1,0 +1,5 @@
+# DB backup — daily at 2:00 AM UTC
+0 2 * * * /usr/local/bin/backup_db.sh >> /backups/db/backup.log 2>&1
+
+# Health watchdog — every 5 minutes
+*/5 * * * * /usr/local/bin/watchdog.sh >> /backups/watchdog.log 2>&1

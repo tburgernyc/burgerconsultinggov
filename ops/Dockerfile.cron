@@ -1,0 +1,7 @@
+FROM alpine:3.20
+RUN apk add --no-cache docker-cli bash
+COPY crontab /etc/crontabs/root
+COPY backup_db.sh /usr/local/bin/backup_db.sh
+COPY watchdog.sh /usr/local/bin/watchdog.sh
+RUN chmod +x /usr/local/bin/backup_db.sh /usr/local/bin/watchdog.sh
+CMD ["crond", "-f", "-l", "6"]
