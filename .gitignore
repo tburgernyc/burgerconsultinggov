@@ -44,3 +44,5 @@ nginx/certbot/www/
 .claude/
 backups/
 upgrade.log
+watchdog.log
+*.log
