@@ -8,6 +8,13 @@ import { winClass as winColor, winColor as winText } from '@/lib/format';
 type Proposal = { id: string; solicitation_id: string; agency: string; naics: string; win_probability: number; status: string; created_at: string; };
 type ProposalDetail = { solicitation_id: string; technical_approach: string; management_plan: string; pricing_narrative: string; past_performance: string; win_probability: number; status: string; };
 
+const STATUS_BADGE: Record<string, string> = {
+  DRAFT: 'pv-badge-navy',
+  SUBMITTED: 'pv-badge-blue',
+  AWARDED: 'pv-badge-green',
+  REJECTED: 'pv-badge-red',
+};
+
 export default function ProposalsPage() {
   const [proposals, setProposals] = useState<Proposal[]>([]);
   const [loading, setLoading] = useState(true);
@@ -16,6 +23,7 @@ export default function ProposalsPage() {
   const [generating, setGenerating] = useState(false);
   const [genSolId, setGenSolId] = useState('');
   const [exporting, setExporting] = useState(false);
+  const [updatingStatus, setUpdatingStatus] = useState(false);
 
   useEffect(() => {
     fetch(`${API}/api/proposals`).then(r => r.json()).then(d => setProposals(Array.isArray(d) ? d : [])).catch(() => setProposals([])).finally(() => setLoading(false));
@@ -47,6 +55,23 @@ export default function ProposalsPage() {
     } finally {
       setExporting(false);
     }
+  }
+
+  async function updateStatus(solId: string, status: string) {
+    if (!confirm(`Mark proposal for ${solId} as ${status}?`)) return;
+    setUpdatingStatus(true);
+    try {
+      const r = await fetch(`${API}/api/proposals/${solId}/status`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      });
+      if (!r.ok) { alert(`Status update failed (${r.status})`); return; }
+      const reloaded = await fetch(`${API}/api/proposals`).then(x => x.json());
+      setProposals(Array.isArray(reloaded) ? reloaded : []);
+      if (selected?.solicitation_id === solId) {
+        setSelected(prev => prev ? { ...prev, status } : null);
+      }
+    } finally { setUpdatingStatus(false); }
   }
 
   async function generateNew() {
@@ -117,7 +142,7 @@ export default function ProposalsPage() {
                             <span className={`pv-badge ${winColor(p.win_probability)}`}>{p.win_probability}%</span>
                           ) : '—'}
                         </td>
-                        <td><span className="pv-badge pv-badge-navy" style={{ fontSize: '0.62rem' }}>{p.status}</span></td>
+                        <td><span className={`pv-badge ${STATUS_BADGE[p.status] || 'pv-badge-gray'}`} style={{ fontSize: '0.62rem' }}>{p.status}</span></td>
                         <td>
                           <button onClick={() => viewProposal(p.solicitation_id)} className="pv-btn pv-btn-navy pv-btn-sm">View</button>
                         </td>
@@ -136,17 +161,35 @@ export default function ProposalsPage() {
             <div className="pv-card" style={{ marginBottom: '1rem', padding: '1.25rem 1.5rem' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.875rem' }}>
                 <div>
-                  <div style={{ fontFamily: "'DM Serif Display', serif", fontSize: '1.05rem', color: 'var(--pv-text)' }}>{selected.solicitation_id}</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
+                    <div style={{ fontFamily: "'DM Serif Display', serif", fontSize: '1.05rem', color: 'var(--pv-text)' }}>{selected.solicitation_id}</div>
+                    <span className={`pv-badge ${STATUS_BADGE[selected.status] || 'pv-badge-gray'}`} style={{ fontSize: '0.6rem' }}>{selected.status}</span>
+                  </div>
                   {selected.win_probability != null && (
                     <span style={{ fontSize: '1.25rem', fontWeight: 800, color: winText(selected.win_probability), fontFamily: "'DM Sans', sans-serif" }}>
                       {selected.win_probability}% Win Probability
                     </span>
                   )}
                 </div>
-                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
                   <button onClick={() => downloadDocx(selected.solicitation_id)} disabled={exporting} className="pv-btn pv-btn-outline pv-btn-sm">
-                    {exporting ? 'Exporting…' : '↓ Download DOCX'}
+                    {exporting ? 'Exporting…' : '↓ DOCX'}
                   </button>
+                  {selected.status === 'DRAFT' && (
+                    <button onClick={() => updateStatus(selected.solicitation_id, 'SUBMITTED')} disabled={updatingStatus} className="pv-btn pv-btn-primary pv-btn-sm">
+                      {updatingStatus ? '…' : '✓ Mark Submitted'}
+                    </button>
+                  )}
+                  {selected.status === 'SUBMITTED' && (
+                    <>
+                      <button onClick={() => updateStatus(selected.solicitation_id, 'AWARDED')} disabled={updatingStatus} className="pv-btn pv-btn-sm" style={{ background: 'var(--pv-success)', color: '#fff', border: '1.5px solid var(--pv-success)' }}>
+                        {updatingStatus ? '…' : '🏆 Awarded'}
+                      </button>
+                      <button onClick={() => updateStatus(selected.solicitation_id, 'REJECTED')} disabled={updatingStatus} className="pv-btn pv-btn-sm" style={{ background: 'var(--pv-danger)', color: '#fff', border: '1.5px solid var(--pv-danger)' }}>
+                        {updatingStatus ? '…' : '✕ Rejected'}
+                      </button>
+                    </>
+                  )}
                   <button onClick={() => setSelected(null)} className="pv-btn pv-btn-outline pv-btn-sm">✕ Close</button>
                 </div>
               </div>

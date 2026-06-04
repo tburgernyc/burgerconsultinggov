@@ -1,6 +1,7 @@
 import json
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 
 from auth import _require_admin
 from db import get_db_connection
@@ -223,6 +224,51 @@ async def get_proposal(solicitation_id: str, _: None = Depends(_require_admin)):
             "win_probability": row[6], "status": row[7],
             "created_at": row[8].isoformat() if row[8] else None,
             "updated_at": row[9].isoformat() if row[9] else None}
+
+
+class _StatusUpdate(BaseModel):
+    status: str
+
+
+@router.put("/api/proposals/{solicitation_id}/status")
+async def update_proposal_status(solicitation_id: str, request: _StatusUpdate,
+                                  _: None = Depends(_require_admin)):
+    status = request.status
+    valid = {"DRAFT", "SUBMITTED", "AWARDED", "REJECTED"}
+    if status not in valid:
+        raise HTTPException(status_code=400, detail=f"status must be one of {valid}")
+
+    # Map proposal status → solicitation pipeline phase
+    sol_phase = {
+        "SUBMITTED": "SUBMITTED",
+        "AWARDED": "AWARDED",
+        "REJECTED": "REJECTED",
+    }.get(status)
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        UPDATE proposals SET status=%s, updated_at=NOW()
+        WHERE solicitation_id=%s
+        RETURNING id, solicitation_id
+    """, (status, solicitation_id))
+    row = cur.fetchone()
+    if not row:
+        conn.rollback()
+        cur.close()
+        conn.close()
+        raise HTTPException(status_code=404, detail="No proposal found for this solicitation")
+
+    if sol_phase:
+        cur.execute("""
+            UPDATE solicitation_queue SET phase_status=%s, updated_at=NOW()
+            WHERE solicitation_id=%s
+        """, (sol_phase, solicitation_id))
+
+    conn.commit()
+    cur.close()
+    conn.close()
+    return {"solicitation_id": solicitation_id, "status": status}
 
 
 @router.get("/api/proposals/{solicitation_id}/export")
