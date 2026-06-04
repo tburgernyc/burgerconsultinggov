@@ -249,6 +249,33 @@ def email_outreach_followup2(to: str, entity_name: str, sol_id: str,
     _send_email(to, subject, _wrap(body))
 
 
+def email_admin_document_uploaded(to: str, legal_name: str, doc_type: str,
+                                   filename: str, expiry_date: str | None) -> None:
+    doc_labels = {
+        'INSURANCE': 'General Liability Insurance Certificate',
+        'W9': 'W-9 Tax Form',
+        'LICENSE': 'State Business License',
+        'SAM': 'SAM.gov / CAGE Verification',
+    }
+    vendor_url = f"{_PORTAL_URL}/admin/vendors"
+    expiry_row = (
+        f'<tr style="background:#f4f6fa"><td style="padding:10px 12px;color:#6b7a99;font-size:13px;width:40%">Expiry Date</td><td style="padding:10px 12px;font-weight:700;color:#d97706">{expiry_date}</td></tr>'
+        if expiry_date else ''
+    )
+    body = (
+        '<h2 style="color:#0a1628;margin:0 0 16px;font-size:20px">Document Uploaded</h2>'
+        f'<p>A vendor has uploaded a compliance document that may require review.</p>'
+        '<table style="width:100%;border-collapse:collapse;margin:16px 0">'
+        f'<tr style="background:#f4f6fa"><td style="padding:10px 12px;color:#6b7a99;font-size:13px;width:40%">Vendor</td><td style="padding:10px 12px;font-weight:700">{legal_name}</td></tr>'
+        f'<tr><td style="padding:10px 12px;color:#6b7a99;font-size:13px">Document Type</td><td style="padding:10px 12px">{doc_labels.get(doc_type, doc_type)}</td></tr>'
+        f'<tr style="background:#f4f6fa"><td style="padding:10px 12px;color:#6b7a99;font-size:13px">Filename</td><td style="padding:10px 12px;font-family:monospace;font-size:13px">{filename}</td></tr>'
+        f'{expiry_row}'
+        '</table>'
+        f'<div style="text-align:center;margin:24px 0"><a href="{vendor_url}" style="background:#0a1628;color:#c9a84c;padding:12px 32px;border-radius:6px;text-decoration:none;font-weight:700;font-size:15px;display:inline-block">View Vendor Registry →</a></div>'
+    )
+    _send_email(to, f"Document Uploaded — {legal_name} — {doc_labels.get(doc_type, doc_type)}", _wrap(body))
+
+
 def email_admin_new_vendor_application(to: str, legal_name: str,
                                         contact_name: str, vendor_email: str) -> None:
     approve_url = f"{_PORTAL_URL}/admin/approvals"

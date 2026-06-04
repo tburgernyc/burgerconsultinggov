@@ -32,6 +32,8 @@ services:
       DB_HOST: db
     expose:
       - "8000"
+    volumes:
+      - /home/t_burgernyc/uploads:/app/uploads
     depends_on:
       db:
         condition: service_healthy

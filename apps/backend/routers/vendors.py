@@ -1,12 +1,20 @@
 import os
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+import pathlib
+import time
+
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from auth import _require_admin, _require_vendor, _pwd_context
 from db import get_db_connection
-from emails import email_vendor_onboarding_received, email_admin_new_vendor_application
+from emails import (
+    email_vendor_onboarding_received,
+    email_admin_new_vendor_application,
+    email_admin_document_uploaded,
+)
 from models import VendorRegisterRequest, VendorUpdateRequest
 
 router = APIRouter()
@@ -246,6 +254,110 @@ async def upload_vendor_doc(vendor_id: str, doc_type: str = Query(...),
     cur.close()
     conn.close()
     return {"status": "registered", "doc_id": str(doc_id), "note": "Upload file via portal UI"}
+
+
+_UPLOAD_ROOT = pathlib.Path("/app/uploads/vendor_docs")
+_ALLOWED_EXTENSIONS = {".pdf", ".jpg", ".jpeg", ".png"}
+_ALLOWED_DOC_TYPES = {"INSURANCE", "W9", "LICENSE", "SAM"}
+
+
+@router.get("/api/vendor-docs")
+async def list_vendor_docs(vendor_id: str = Depends(_require_vendor)):
+    """Return the most recent uploaded document for each doc type."""
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT DISTINCT ON (doc_type)
+               id, doc_type, filename, storage_path, created_at
+        FROM documents
+        WHERE related_type = 'VENDOR' AND related_id = %s
+        ORDER BY doc_type, created_at DESC
+    """, (vendor_id,))
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+    return [{"id": str(r[0]), "doc_type": r[1], "filename": r[2],
+             "created_at": r[4].isoformat() if r[4] else None} for r in rows]
+
+
+@router.post("/api/vendor-docs")
+async def upload_vendor_doc_self(
+    file: UploadFile = File(...),
+    doc_type: str = Form(...),
+    expiry_date: Optional[str] = Form(None),
+    vendor_id: str = Depends(_require_vendor),
+):
+    if doc_type not in _ALLOWED_DOC_TYPES:
+        raise HTTPException(status_code=400, detail=f"doc_type must be one of {_ALLOWED_DOC_TYPES}")
+
+    suffix = pathlib.Path(file.filename or "upload").suffix.lower()
+    if suffix not in _ALLOWED_EXTENSIONS:
+        raise HTTPException(status_code=400, detail="Only PDF, JPG, and PNG files are accepted")
+
+    dest_dir = _UPLOAD_ROOT / vendor_id
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    safe_name = f"{doc_type}_{int(time.time())}{suffix}"
+    dest_path = dest_dir / safe_name
+
+    contents = await file.read()
+    dest_path.write_bytes(contents)
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        INSERT INTO documents (related_type, related_id, doc_type, filename, storage_path, uploaded_by)
+        VALUES ('VENDOR', %s, %s, %s, %s, %s)
+        RETURNING id
+    """, (vendor_id, doc_type, file.filename, str(dest_path), vendor_id))
+    doc_id = cur.fetchone()[0]
+
+    if doc_type == "INSURANCE" and expiry_date:
+        cur.execute("""
+            UPDATE vendor_registry SET insurance_expiry = %s WHERE id = %s::uuid
+        """, (expiry_date, vendor_id))
+
+    conn.commit()
+    cur.close()
+
+    cur2 = conn.cursor()
+    cur2.execute("SELECT legal_name FROM vendor_registry WHERE id = %s::uuid", (vendor_id,))
+    name_row = cur2.fetchone()
+    cur2.close()
+    conn.close()
+
+    admin_email = os.getenv("ADMIN_EMAIL", "procurement@burgergov.com")
+    email_admin_document_uploaded(
+        admin_email,
+        legal_name=name_row[0] if name_row else vendor_id,
+        doc_type=doc_type,
+        filename=file.filename or safe_name,
+        expiry_date=expiry_date,
+    )
+
+    return {"status": "uploaded", "doc_id": str(doc_id), "filename": file.filename}
+
+
+@router.get("/api/vendor-docs/{doc_id}/file")
+async def serve_vendor_doc(doc_id: str, vendor_id: str = Depends(_require_vendor)):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT storage_path, filename, doc_type
+        FROM documents
+        WHERE id = %s::uuid AND related_type = 'VENDOR' AND related_id = %s
+    """, (doc_id, vendor_id))
+    row = cur.fetchone()
+    cur.close()
+    conn.close()
+    if not row:
+        raise HTTPException(status_code=404, detail="Document not found")
+    storage_path, filename, doc_type = row
+    path = pathlib.Path(storage_path)
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="File not found on disk")
+    media_type = "application/pdf" if str(path).endswith(".pdf") else "image/jpeg"
+    return FileResponse(path, media_type=media_type,
+                        headers={"Content-Disposition": f'inline; filename="{filename}"'})
 
 
 class _PasswordChangeRequest(BaseModel):

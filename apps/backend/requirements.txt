@@ -10,3 +10,4 @@ resend
 apscheduler>=3.10.0
 passlib[bcrypt]
 python-docx
+python-multipart

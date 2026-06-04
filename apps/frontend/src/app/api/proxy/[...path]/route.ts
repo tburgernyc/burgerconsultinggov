@@ -14,12 +14,13 @@ async function proxy(req: NextRequest, path: string[]): Promise<NextResponse> {
   const search = req.nextUrl.searchParams.toString();
   const url = `${BACKEND}/${path.join('/')}${search ? '?' + search : ''}`;
 
-  const init: RequestInit = {
-    method: req.method,
-    headers: { 'X-Admin-Token': ADMIN_TOKEN, 'Content-Type': 'application/json' },
-  };
+  const headers: Record<string, string> = { 'X-Admin-Token': ADMIN_TOKEN };
+  const ct = req.headers.get('content-type');
+  if (ct) headers['Content-Type'] = ct;
+
+  const init: RequestInit = { method: req.method, headers };
   if (req.method !== 'GET' && req.method !== 'HEAD') {
-    init.body = await req.text();
+    init.body = await req.arrayBuffer();
   }
 
   try {
