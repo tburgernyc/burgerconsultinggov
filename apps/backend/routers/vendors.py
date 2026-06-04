@@ -256,6 +256,73 @@ async def upload_vendor_doc(vendor_id: str, doc_type: str = Query(...),
     return {"status": "registered", "doc_id": str(doc_id), "note": "Upload file via portal UI"}
 
 
+class _ComplianceUpdateRequest(BaseModel):
+    insurance_verified: Optional[bool] = None
+    sam_verified: Optional[bool] = None
+    pay_when_paid_accepted: Optional[bool] = None
+
+
+@router.put("/api/vendors/{vendor_id}/compliance")
+async def update_vendor_compliance(vendor_id: str, request: _ComplianceUpdateRequest,
+                                    _: None = Depends(_require_admin)):
+    updates, values = [], []
+    if request.insurance_verified is not None:
+        updates.append("insurance_verified=%s"); values.append(request.insurance_verified)
+    if request.sam_verified is not None:
+        updates.append("sam_verified=%s"); values.append(request.sam_verified)
+    if request.pay_when_paid_accepted is not None:
+        updates.append("pay_when_paid_accepted=%s"); values.append(request.pay_when_paid_accepted)
+    if not updates:
+        return {"status": "no changes"}
+    values.append(vendor_id)
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute(f"UPDATE vendor_registry SET {', '.join(updates)} WHERE id=%s::uuid RETURNING id",
+                values)
+    if not cur.fetchone():
+        conn.rollback(); cur.close(); conn.close()
+        raise HTTPException(status_code=404, detail="Vendor not found")
+    conn.commit(); cur.close(); conn.close()
+    return {"status": "updated"}
+
+
+@router.get("/api/vendors/{vendor_id}/docs/list")
+async def list_vendor_docs_admin(vendor_id: str, _: None = Depends(_require_admin)):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT id, doc_type, filename, created_at
+        FROM documents
+        WHERE related_type = 'VENDOR' AND related_id = %s
+        ORDER BY doc_type, created_at DESC
+    """, (vendor_id,))
+    rows = cur.fetchall()
+    cur.close(); conn.close()
+    return [{"id": str(r[0]), "doc_type": r[1], "filename": r[2],
+             "created_at": r[3].isoformat() if r[3] else None} for r in rows]
+
+
+@router.get("/api/vendors/{vendor_id}/docs/{doc_id}/file")
+async def serve_vendor_doc_admin(vendor_id: str, doc_id: str,
+                                  _: None = Depends(_require_admin)):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT storage_path, filename FROM documents
+        WHERE id = %s::uuid AND related_type = 'VENDOR' AND related_id = %s
+    """, (doc_id, vendor_id))
+    row = cur.fetchone()
+    cur.close(); conn.close()
+    if not row:
+        raise HTTPException(status_code=404, detail="Document not found")
+    path = pathlib.Path(row[0])
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="File not found on disk")
+    media_type = "application/pdf" if str(path).endswith(".pdf") else "image/jpeg"
+    return FileResponse(path, media_type=media_type,
+                        headers={"Content-Disposition": f'inline; filename="{row[1]}"'})
+
+
 _UPLOAD_ROOT = pathlib.Path("/app/uploads/vendor_docs")
 _ALLOWED_EXTENSIONS = {".pdf", ".jpg", ".jpeg", ".png"}
 _ALLOWED_DOC_TYPES = {"INSURANCE", "W9", "LICENSE", "SAM"}
