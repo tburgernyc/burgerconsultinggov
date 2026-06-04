@@ -42,6 +42,14 @@ export default function ProspectsPage() {
   const [discovering, setDiscovering] = useState(false);
   const [msg, setMsg] = useState('');
 
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [adding, setAdding] = useState(false);
+  const [addMsg, setAddMsg] = useState('');
+  const [addForm, setAddForm] = useState({
+    entity_name: '', contact_name: '', contact_email: '',
+    city: '', state: '', naics_codes: '', qualification_score: 7, notes: '', launch: true,
+  });
+
   useEffect(() => {
     fetch(`${API}/api/solicitations/list`)
       .then(r => r.json())
@@ -110,6 +118,52 @@ export default function ProspectsPage() {
       .finally(() => setLaunching(false));
   }
 
+  async function submitManualProspect() {
+    if (!addForm.entity_name.trim()) { setAddMsg('Company name is required.'); return; }
+    setAdding(true);
+    setAddMsg('');
+    const prospect = {
+      entity_name: addForm.entity_name.trim(),
+      contact_name: addForm.contact_name.trim() || null,
+      contact_email: addForm.contact_email.trim() || null,
+      city: addForm.city.trim() || null,
+      state: addForm.state.trim() || null,
+      naics_codes: addForm.naics_codes ? addForm.naics_codes.split(',').map((s: string) => s.trim()).filter(Boolean) : [],
+      qualification_score: addForm.qualification_score,
+      notes: addForm.notes.trim() || null,
+      source: 'MANUAL',
+      past_performance: [],
+      business_types: [],
+    };
+    try {
+      if (addForm.launch && selectedSol) {
+        const r = await fetch(`${API}/api/outreach/launch/${selectedSol}`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prospect_indices: [0], prospects: [prospect] }),
+        });
+        const d = await r.json();
+        setMsg(prospect.contact_email
+          ? `Prospect added — outreach email sent (${d.launched || 0} sent).`
+          : `Prospect added — no email on file, follow up manually.`
+        );
+        fetch(`${API}/api/outreach/campaigns/${selectedSol}`).then(r => r.json()).then(d => setCampaigns(d.campaigns || []));
+        setView('campaigns');
+      } else {
+        await fetch(`${API}/api/prospects/manual`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ entity_name: prospect.entity_name, contact_name: prospect.contact_name, contact_email: prospect.contact_email, city: prospect.city, state: prospect.state, naics_codes: prospect.naics_codes, qualification_score: prospect.qualification_score, notes: prospect.notes }),
+        });
+        setMsg('Prospect saved to registry.');
+      }
+      setShowAddModal(false);
+      setAddForm({ entity_name: '', contact_name: '', contact_email: '', city: '', state: '', naics_codes: '', qualification_score: 7, notes: '', launch: true });
+    } catch {
+      setAddMsg('Failed to save prospect. Check connection.');
+    } finally {
+      setAdding(false);
+    }
+  }
+
   function toggleSelect(i: number) {
     setSelectedIndices(prev => {
       const next = new Set(prev);
@@ -150,14 +204,22 @@ export default function ProspectsPage() {
               )}
             </div>
           )}
-          <button
-            onClick={discover}
-            disabled={!selectedSol || discovering}
-            className="pv-btn pv-btn-primary"
-            style={{ flexShrink: 0 }}
-          >
-            {discovering ? 'Discovering…' : 'Run Discovery →'}
-          </button>
+          <div style={{ display: 'flex', gap: '0.5rem', flexShrink: 0 }}>
+            <button
+              onClick={() => { setShowAddModal(true); setAddMsg(''); }}
+              disabled={!selectedSol}
+              className="pv-btn pv-btn-outline"
+            >
+              + Add Manually
+            </button>
+            <button
+              onClick={discover}
+              disabled={!selectedSol || discovering}
+              className="pv-btn pv-btn-primary"
+            >
+              {discovering ? 'Discovering…' : 'Run Discovery →'}
+            </button>
+          </div>
         </div>
 
         {msg && (
@@ -325,6 +387,78 @@ export default function ProspectsPage() {
         )}
 
       </div>
+
+      {/* Manual Prospect Modal */}
+      {showAddModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(10,22,40,0.55)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }} onClick={() => setShowAddModal(false)}>
+          <div style={{ background: '#fff', borderRadius: 12, padding: '2rem', width: '100%', maxWidth: 540, boxShadow: '0 20px 60px rgba(10,22,40,0.25)', maxHeight: '90vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+              <h2 style={{ fontFamily: "'DM Serif Display', serif", fontSize: '1.25rem', color: 'var(--pv-text)', margin: 0 }}>Add Prospect Manually</h2>
+              <button onClick={() => setShowAddModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.2rem', color: 'var(--pv-muted)' }}>✕</button>
+            </div>
+
+            {[
+              { label: 'Company Name *', key: 'entity_name', placeholder: 'Acme Federal IT LLC' },
+              { label: 'Contact Name', key: 'contact_name', placeholder: 'Jane Smith' },
+              { label: 'Contact Email', key: 'contact_email', placeholder: 'jane@acmeit.com' },
+            ].map(f => (
+              <div key={f.key} style={{ marginBottom: '1rem' }}>
+                <label style={{ fontSize: '0.7rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--pv-text-mid)', display: 'block', marginBottom: '0.35rem' }}>{f.label}</label>
+                <input
+                  value={addForm[f.key as keyof typeof addForm] as string}
+                  onChange={e => setAddForm(p => ({ ...p, [f.key]: e.target.value }))}
+                  placeholder={f.placeholder}
+                  style={{ width: '100%', padding: '0.5rem 0.75rem', border: '1px solid var(--pv-border)', borderRadius: 6, fontSize: '0.9rem', fontFamily: "'DM Sans', sans-serif", color: 'var(--pv-text)', background: '#fff', boxSizing: 'border-box' }}
+                />
+              </div>
+            ))}
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+              {[{ label: 'City', key: 'city', placeholder: 'Washington' }, { label: 'State', key: 'state', placeholder: 'DC' }].map(f => (
+                <div key={f.key}>
+                  <label style={{ fontSize: '0.7rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--pv-text-mid)', display: 'block', marginBottom: '0.35rem' }}>{f.label}</label>
+                  <input value={addForm[f.key as keyof typeof addForm] as string} onChange={e => setAddForm(p => ({ ...p, [f.key]: e.target.value }))} placeholder={f.placeholder} style={{ width: '100%', padding: '0.5rem 0.75rem', border: '1px solid var(--pv-border)', borderRadius: 6, fontSize: '0.9rem', fontFamily: "'DM Sans', sans-serif", color: 'var(--pv-text)', background: '#fff', boxSizing: 'border-box' }} />
+                </div>
+              ))}
+            </div>
+
+            <div style={{ marginBottom: '1rem' }}>
+              <label style={{ fontSize: '0.7rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--pv-text-mid)', display: 'block', marginBottom: '0.35rem' }}>NAICS Codes (comma-separated)</label>
+              <input value={addForm.naics_codes} onChange={e => setAddForm(p => ({ ...p, naics_codes: e.target.value }))} placeholder="541511, 541519" style={{ width: '100%', padding: '0.5rem 0.75rem', border: '1px solid var(--pv-border)', borderRadius: 6, fontSize: '0.9rem', fontFamily: "'DM Sans', sans-serif", color: 'var(--pv-text)', background: '#fff', boxSizing: 'border-box' }} />
+            </div>
+
+            <div style={{ marginBottom: '1rem' }}>
+              <label style={{ fontSize: '0.7rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--pv-text-mid)', display: 'block', marginBottom: '0.35rem' }}>AI Fit Score (1–10)</label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                <input type="range" min={1} max={10} value={addForm.qualification_score} onChange={e => setAddForm(p => ({ ...p, qualification_score: Number(e.target.value) }))} style={{ flex: 1, accentColor: 'var(--pv-navy)' }} />
+                <span style={{ fontWeight: 800, fontSize: '1rem', color: addForm.qualification_score >= 8 ? 'var(--pv-success)' : addForm.qualification_score >= 6 ? 'var(--pv-warning)' : 'var(--pv-muted)', minWidth: 28 }}>{addForm.qualification_score}</span>
+              </div>
+            </div>
+
+            <div style={{ marginBottom: '1.25rem' }}>
+              <label style={{ fontSize: '0.7rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--pv-text-mid)', display: 'block', marginBottom: '0.35rem' }}>Notes (optional)</label>
+              <textarea value={addForm.notes} onChange={e => setAddForm(p => ({ ...p, notes: e.target.value }))} placeholder="LinkedIn profile, referral source, relevant past performance…" rows={2} style={{ width: '100%', padding: '0.5rem 0.75rem', border: '1px solid var(--pv-border)', borderRadius: 6, fontSize: '0.9rem', fontFamily: "'DM Sans', sans-serif", color: 'var(--pv-text)', background: '#fff', resize: 'vertical', boxSizing: 'border-box' }} />
+            </div>
+
+            <div style={{ background: '#F0F9FF', border: '1px solid #BAE6FD', borderRadius: 8, padding: '0.875rem', marginBottom: '1.25rem', display: 'flex', gap: '0.625rem', alignItems: 'flex-start', cursor: 'pointer' }} onClick={() => setAddForm(p => ({ ...p, launch: !p.launch }))}>
+              <input type="checkbox" checked={addForm.launch} readOnly style={{ marginTop: '0.15rem', flexShrink: 0 }} />
+              <div style={{ fontSize: '0.85rem', color: 'var(--pv-text)' }}>
+                <strong>Launch outreach now</strong> for <em>{sol?.agency || 'this solicitation'}</em>.
+                <div style={{ fontSize: '0.78rem', color: 'var(--pv-text-mid)', marginTop: '0.2rem' }}>Generates a Gemini SOW brief and sends a Day 0 email (if email is provided).</div>
+              </div>
+            </div>
+
+            {addMsg && <div style={{ padding: '0.6rem 0.875rem', background: '#FEF2F2', border: '1px solid #FCA5A5', borderRadius: 6, color: 'var(--pv-danger)', fontSize: '0.83rem', marginBottom: '1rem' }}>{addMsg}</div>}
+
+            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+              <button onClick={() => setShowAddModal(false)} className="pv-btn pv-btn-outline">Cancel</button>
+              <button onClick={submitManualProspect} disabled={adding} className="pv-btn pv-btn-primary">
+                {adding ? 'Saving…' : addForm.launch ? 'Add & Launch Outreach' : 'Add to Registry'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </AdminShell>
   );
 }

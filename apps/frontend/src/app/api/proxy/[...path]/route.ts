@@ -24,10 +24,22 @@ async function proxy(req: NextRequest, path: string[]): Promise<NextResponse> {
 
   try {
     const res = await fetch(url, init);
+    const contentType = res.headers.get('content-type') || '';
+    const isBinary =
+      contentType.includes('application/vnd.openxmlformats') ||
+      contentType.includes('application/octet-stream') ||
+      contentType.includes('application/pdf');
+    if (isBinary) {
+      const buffer = await res.arrayBuffer();
+      const headers: Record<string, string> = { 'Content-Type': contentType };
+      const cd = res.headers.get('content-disposition');
+      if (cd) headers['Content-Disposition'] = cd;
+      return new NextResponse(buffer, { status: res.status, headers });
+    }
     const body = await res.text();
     return new NextResponse(body, {
       status: res.status,
-      headers: { 'Content-Type': res.headers.get('content-type') || 'application/json' },
+      headers: { 'Content-Type': contentType || 'application/json' },
     });
   } catch {
     return NextResponse.json({ error: 'Backend unreachable' }, { status: 502 });

@@ -18,6 +18,7 @@ export default function ProposalsPage() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [genSolId, setGenSolId] = useState('');
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     fetch(`${API}/api/proposals`).then(r => r.json()).then(d => setProposals(Array.isArray(d) ? d : [])).catch(() => setProposals([])).finally(() => setLoading(false));
@@ -30,6 +31,25 @@ export default function ProposalsPage() {
       const r = await fetch(`${API}/api/proposals/${solId}`);
       if (r.ok) setSelected(await r.json());
     } finally { setDetailLoading(false); }
+  }
+
+  async function downloadDocx(solId: string) {
+    setExporting(true);
+    try {
+      const res = await fetch(`${API}/api/proposals/${solId}/export`);
+      if (!res.ok) { alert('Export failed — make sure a proposal exists for this solicitation.'); return; }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `BCG_Proposal_${solId.replace(/\//g, '-')}_${new Date().toISOString().slice(0, 10)}.docx`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } finally {
+      setExporting(false);
+    }
   }
 
   async function generateNew() {
@@ -126,7 +146,12 @@ export default function ProposalsPage() {
                     </span>
                   )}
                 </div>
-                <button onClick={() => setSelected(null)} className="pv-btn pv-btn-outline pv-btn-sm">✕ Close</button>
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  <button onClick={() => downloadDocx(selected.solicitation_id)} disabled={exporting} className="pv-btn pv-btn-outline pv-btn-sm">
+                    {exporting ? 'Exporting…' : '↓ Download DOCX'}
+                  </button>
+                  <button onClick={() => setSelected(null)} className="pv-btn pv-btn-outline pv-btn-sm">✕ Close</button>
+                </div>
               </div>
             </div>
 

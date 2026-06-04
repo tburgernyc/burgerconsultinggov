@@ -1,4 +1,5 @@
 import asyncio
+import io
 import os
 import json
 import re
@@ -10,6 +11,7 @@ import resend
 from contextlib import asynccontextmanager
 from datetime import datetime, date, timedelta
 from fastapi import FastAPI, HTTPException, Query, Depends, Header, Request
+from fastapi.responses import StreamingResponse
 from passlib.context import CryptContext
 import secrets as _secrets
 from fastapi.middleware.cors import CORSMiddleware
@@ -203,8 +205,15 @@ def email_ar_followup_sent(to: str, contract_number: str, agency: str,
 
 def email_outreach_initial(to: str, entity_name: str, sol_id: str, agency: str,
                             naics: str, sow_brief: str, quote_url: str,
-                            deadline_str: str, est_value: float) -> None:
+                            deadline_str: str, est_value: float,
+                            opt_out_url: str = "") -> None:
     value_line = f'${est_value:,.0f}' if est_value else 'See brief'
+    unsubscribe_footer = (
+        f'<p style="font-size:11px;color:#9ca3af;margin-top:24px;border-top:1px solid #e5e7eb;padding-top:12px">'
+        f'You received this because your firm is listed in the SAM.gov federal vendor registry or USASpending.gov award history. '
+        f'This is a one-time solicitation outreach — you will receive at most two follow-ups. '
+        f'<a href="{opt_out_url}" style="color:#9ca3af;text-decoration:underline">Unsubscribe from this solicitation</a>.</p>'
+    ) if opt_out_url else ''
     body = (
         f'<h2 style="color:#1a2e4a;margin:0 0 8px;font-size:20px">Subcontract Quote Request</h2>'
         f'<p style="margin:0 0 16px;color:#4b5563;font-size:14px">You are receiving this because your firm appears in the SAM.gov registry or USASpending.gov award history as a qualified provider for federal IT services work under <strong>NAICS {naics}</strong>.</p>'
@@ -230,32 +239,47 @@ def email_outreach_initial(to: str, entity_name: str, sol_id: str, agency: str,
         '</ul>'
         f'<a href="{quote_url}" style="display:inline-block;background:#1a2e4a;color:#fff;padding:12px 28px;border-radius:6px;text-decoration:none;font-weight:700;font-size:14px;margin-bottom:20px">Submit Your Quote →</a>'
         '<p style="font-size:12px;color:#9ca3af;margin-top:20px">No account required — the link above takes you directly to the quote form. Burger Consulting LLC (EIN 84-3113166) is a SAM-registered small business prime contractor based in New York, NY.</p>'
+        f'{unsubscribe_footer}'
     )
     subject = f"QUOTE REQUEST: {agency or 'Federal Agency'} | {sol_id} | NAICS {naics} | Due {deadline_str}"
     _send_email(to, subject, _wrap(body))
 
 
 def email_outreach_followup1(to: str, entity_name: str, sol_id: str,
-                              agency: str, quote_url: str, deadline_str: str) -> None:
+                              agency: str, quote_url: str, deadline_str: str,
+                              opt_out_url: str = "") -> None:
+    unsubscribe_footer = (
+        f'<p style="font-size:11px;color:#9ca3af;margin-top:24px;border-top:1px solid #e5e7eb;padding-top:12px">'
+        f'<a href="{opt_out_url}" style="color:#9ca3af;text-decoration:underline">Unsubscribe from this solicitation</a> — '
+        f'you will receive one more reminder if you do not opt out or submit a quote.</p>'
+    ) if opt_out_url else ''
     body = (
         f'<h2 style="color:#1a2e4a;margin:0 0 8px;font-size:20px">Following Up — Quote Request for {sol_id}</h2>'
         f'<p style="color:#4b5563;font-size:14px">We sent a subcontract quote request a few days ago for a federal IT services opportunity with <strong>{agency or "a federal agency"}</strong> (Solicitation <strong>{sol_id}</strong>) and wanted to follow up.</p>'
         f'<p style="color:#4b5563;font-size:14px">The quote deadline is <strong style="color:#d97706">{deadline_str}</strong>. If your firm has capacity and the scope is a fit, we would welcome your submission.</p>'
         f'<a href="{quote_url}" style="display:inline-block;background:#1a2e4a;color:#fff;padding:12px 28px;border-radius:6px;text-decoration:none;font-weight:700;font-size:14px;margin:20px 0">Submit Your Quote →</a>'
         '<p style="font-size:12px;color:#9ca3af">If you are not interested or this is not a fit, no action needed — you will receive one final reminder before the deadline.</p>'
+        f'{unsubscribe_footer}'
     )
     subject = f"Follow-Up: Quote Request — {sol_id} — {agency or 'Federal Agency'}"
     _send_email(to, subject, _wrap(body))
 
 
 def email_outreach_followup2(to: str, entity_name: str, sol_id: str,
-                              agency: str, quote_url: str, deadline_str: str) -> None:
+                              agency: str, quote_url: str, deadline_str: str,
+                              opt_out_url: str = "") -> None:
+    unsubscribe_footer = (
+        f'<p style="font-size:11px;color:#9ca3af;margin-top:24px;border-top:1px solid #e5e7eb;padding-top:12px">'
+        f'This is the last email on this solicitation. '
+        f'<a href="{opt_out_url}" style="color:#9ca3af;text-decoration:underline">Unsubscribe from all future BCG outreach</a>.</p>'
+    ) if opt_out_url else ''
     body = (
         f'<h2 style="color:#d97706;margin:0 0 8px;font-size:20px">Final Notice — Quote Deadline Approaching</h2>'
         f'<p style="color:#4b5563;font-size:14px">This is the final outreach for the subcontract quote request on <strong>{sol_id}</strong> with <strong>{agency or "a federal agency"}</strong>.</p>'
         f'<p style="color:#4b5563;font-size:14px">Quote deadline: <strong style="color:#dc2626">{deadline_str}</strong>. After this date we will finalize our team and this opportunity will close.</p>'
         f'<a href="{quote_url}" style="display:inline-block;background:#d97706;color:#fff;padding:12px 28px;border-radius:6px;text-decoration:none;font-weight:700;font-size:14px;margin:20px 0">Submit Quote Now →</a>'
         '<p style="font-size:12px;color:#9ca3af">After this email you will not receive further outreach on this solicitation. To be added to our standing vendor registry for future opportunities, visit burgergov.com/portal/register.</p>'
+        f'{unsubscribe_footer}'
     )
     subject = f"FINAL NOTICE: Quote Deadline {deadline_str} — {sol_id}"
     _send_email(to, subject, _wrap(body))
@@ -780,8 +804,9 @@ async def cron_outreach_followup() -> None:
                 continue
             deadline_str = deadline.strftime("%B %d, %Y") if deadline else "TBD"
             quote_url = f"{admin_domain}/quote/{token}"
+            opt_out_url = f"{admin_domain}/optout/{token}"
             try:
-                email_outreach_followup1(email, name, sol_id, agency, quote_url, deadline_str)
+                email_outreach_followup1(email, name, sol_id, agency, quote_url, deadline_str, opt_out_url)
                 cur.execute("UPDATE outreach_campaigns SET day3_sent_at=NOW(), status='SENT' WHERE id=%s::uuid", (str(campaign_id),))
                 conn.commit()
             except Exception as e:
@@ -807,8 +832,9 @@ async def cron_outreach_followup() -> None:
                 continue
             deadline_str = deadline.strftime("%B %d, %Y") if deadline else "TBD"
             quote_url = f"{admin_domain}/quote/{token}"
+            opt_out_url = f"{admin_domain}/optout/{token}"
             try:
-                email_outreach_followup2(email, name, sol_id, agency, quote_url, deadline_str)
+                email_outreach_followup2(email, name, sol_id, agency, quote_url, deadline_str, opt_out_url)
                 cur.execute("UPDATE outreach_campaigns SET day7_sent_at=NOW() WHERE id=%s::uuid", (str(campaign_id),))
                 conn.commit()
             except Exception as e:
@@ -1161,6 +1187,9 @@ ALTER TABLE vendor_prospects ADD COLUMN IF NOT EXISTS entity_url TEXT;
 CREATE UNIQUE INDEX IF NOT EXISTS vendor_prospects_uei_idx ON vendor_prospects(uei) WHERE uei IS NOT NULL;
 ALTER TABLE vendor_registry ADD COLUMN IF NOT EXISTS onboarding_status TEXT DEFAULT 'PENDING';
 CREATE UNIQUE INDEX IF NOT EXISTS vendor_registry_email_idx ON vendor_registry(email) WHERE email IS NOT NULL;
+ALTER TABLE active_contracts ADD COLUMN IF NOT EXISTS subcontract_agreement TEXT;
+ALTER TABLE active_contracts ADD COLUMN IF NOT EXISTS agreement_signed_at TIMESTAMPTZ;
+ALTER TABLE active_contracts ADD COLUMN IF NOT EXISTS agreement_signed_by TEXT;
 """
 
 
@@ -2978,11 +3007,12 @@ Keep it plain-text, factual, under 150 words. Start each bullet with a dash."""
         email_addr = p.get("contact_email", "")
         if email_addr and "@" in email_addr:
             quote_url = f"{admin_domain}/quote/{quote_token}"
+            opt_out_url = f"{admin_domain}/optout/{quote_token}"
             try:
                 email_outreach_initial(
                     email_addr, p["entity_name"], sol_id, agency or "",
                     naics or "", sow_brief, quote_url, deadline_str,
-                    float(est_value or 0)
+                    float(est_value or 0), opt_out_url
                 )
                 launched += 1
             except Exception as e:
@@ -3144,3 +3174,350 @@ async def submit_prospect_quote(token: str, request: ProspectQuoteRequest):
     cur.close()
     conn.close()
     return {"success": True, "message": "Quote received. Burger Consulting LLC will be in touch within 48 hours."}
+
+
+# ──────────────── Manual Prospect Entry ────────────────
+
+class ManualProspectRequest(BaseModel):
+    entity_name: str
+    contact_name: Optional[str] = None
+    contact_email: Optional[str] = None
+    city: Optional[str] = None
+    state: Optional[str] = None
+    naics_codes: Optional[List[str]] = None
+    qualification_score: Optional[int] = 5
+    notes: Optional[str] = None
+
+
+@app.post("/api/prospects/manual")
+async def add_manual_prospect(request: ManualProspectRequest, _: None = Depends(_require_admin)):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        INSERT INTO vendor_prospects
+            (source, entity_name, contact_name, contact_email, city, state,
+             naics_codes, qualification_score, notes, status)
+        VALUES ('MANUAL', %s, %s, %s, %s, %s, %s, %s, %s, 'DISCOVERED')
+        RETURNING id, created_at
+    """, (
+        request.entity_name, request.contact_name, request.contact_email,
+        request.city, request.state,
+        request.naics_codes or [],
+        max(1, min(10, request.qualification_score or 5)),
+        request.notes,
+    ))
+    row = cur.fetchone()
+    conn.commit()
+    cur.close()
+    conn.close()
+    return {
+        "id": str(row[0]),
+        "entity_name": request.entity_name,
+        "contact_name": request.contact_name,
+        "contact_email": request.contact_email,
+        "city": request.city,
+        "state": request.state,
+        "naics_codes": request.naics_codes or [],
+        "qualification_score": request.qualification_score,
+        "notes": request.notes,
+        "source": "MANUAL",
+        "created_at": row[1].isoformat() if row[1] else None,
+    }
+
+
+# ──────────────── CAN-SPAM Opt-Out ────────────────
+
+@app.get("/api/outreach/optout/{token}")
+async def opt_out(token: str):
+    """Public — recipient clicks unsubscribe link. Sets campaign to OPT_OUT."""
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        UPDATE outreach_campaigns
+        SET status = 'OPT_OUT'
+        WHERE quote_token = %s::uuid
+          AND status NOT IN ('SUBMITTED', 'OPT_OUT')
+        RETURNING id
+    """, (token,))
+    updated = cur.fetchone()
+    conn.commit()
+    cur.close()
+    conn.close()
+    if not updated:
+        return {"success": False, "message": "Link not found or already processed."}
+    return {"success": True, "message": "You have been unsubscribed from this solicitation's outreach."}
+
+
+# ──────────────── Proposal DOCX Export ────────────────
+
+@app.get("/api/proposals/{solicitation_id}/export")
+async def export_proposal_docx(solicitation_id: str, _: None = Depends(_require_admin)):
+    from docx import Document
+    from docx.shared import Pt, RGBColor, Inches
+    from docx.oxml.ns import qn
+    from docx.oxml import OxmlElement
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT p.solicitation_id, s.agency, s.naics, s.estimated_value, s.response_deadline,
+               p.technical_approach, p.management_plan, p.pricing_narrative,
+               p.past_performance, p.win_probability, p.created_at
+        FROM proposals p
+        LEFT JOIN solicitation_queue s ON p.solicitation_id = s.solicitation_id
+        WHERE p.solicitation_id = %s
+        ORDER BY p.created_at DESC LIMIT 1
+    """, (solicitation_id,))
+    row = cur.fetchone()
+    cur.close()
+    conn.close()
+    if not row:
+        raise HTTPException(status_code=404, detail="No proposal found for this solicitation")
+
+    sol_id, agency, naics, est_value, deadline, tech, mgmt, pricing, perf, win_prob, created_at = row
+
+    doc = Document()
+
+    # Page margins
+    for section in doc.sections:
+        section.top_margin = Inches(1)
+        section.bottom_margin = Inches(1)
+        section.left_margin = Inches(1.25)
+        section.right_margin = Inches(1.25)
+
+    def add_heading(text: str, level: int = 1):
+        p = doc.add_paragraph()
+        run = p.add_run(text)
+        run.bold = True
+        if level == 1:
+            run.font.size = Pt(16)
+            run.font.color.rgb = RGBColor(0x0A, 0x16, 0x28)
+        else:
+            run.font.size = Pt(12)
+            run.font.color.rgb = RGBColor(0x1D, 0x4E, 0xD8)
+        p.paragraph_format.space_before = Pt(18 if level == 1 else 12)
+        p.paragraph_format.space_after = Pt(6)
+        return p
+
+    def add_body(text: str):
+        p = doc.add_paragraph(text or "")
+        p.paragraph_format.space_after = Pt(8)
+        for run in p.runs:
+            run.font.size = Pt(10.5)
+        return p
+
+    # Cover header
+    title_p = doc.add_paragraph()
+    title_r = title_p.add_run("BURGER CONSULTING LLC")
+    title_r.bold = True
+    title_r.font.size = Pt(20)
+    title_r.font.color.rgb = RGBColor(0x0A, 0x16, 0x28)
+
+    sub_p = doc.add_paragraph()
+    sub_r = sub_p.add_run("Federal Procurement Proposal — Confidential")
+    sub_r.font.size = Pt(10)
+    sub_r.font.color.rgb = RGBColor(0x6B, 0x7A, 0x99)
+    sub_p.paragraph_format.space_after = Pt(4)
+
+    doc.add_paragraph()
+
+    # Solicitation metadata table
+    meta_table = doc.add_table(rows=5, cols=2)
+    meta_table.style = 'Table Grid'
+    meta_data = [
+        ("Solicitation ID", sol_id),
+        ("Issuing Agency", agency or "—"),
+        ("NAICS Code", naics or "—"),
+        ("Estimated Value", f"${float(est_value):,.0f}" if est_value else "—"),
+        ("Response Deadline", deadline.strftime("%B %d, %Y") if deadline else "—"),
+    ]
+    for i, (label, value) in enumerate(meta_data):
+        label_cell = meta_table.rows[i].cells[0]
+        value_cell = meta_table.rows[i].cells[1]
+        label_cell.text = label
+        value_cell.text = value
+        label_cell.paragraphs[0].runs[0].bold = True
+        label_cell.paragraphs[0].runs[0].font.size = Pt(10)
+        value_cell.paragraphs[0].runs[0].font.size = Pt(10)
+
+    if win_prob is not None:
+        doc.add_paragraph()
+        wp = doc.add_paragraph()
+        wp_r = wp.add_run(f"AI Win Probability Estimate: {win_prob}%")
+        wp_r.bold = True
+        wp_r.font.size = Pt(11)
+        wp_r.font.color.rgb = RGBColor(0x06, 0x60, 0x27) if win_prob >= 60 else RGBColor(0xD9, 0x77, 0x06)
+
+    doc.add_page_break()
+
+    sections = [
+        ("Technical Approach", tech),
+        ("Management Plan", mgmt),
+        ("Pricing Narrative", pricing),
+        ("Past Performance", perf),
+    ]
+    for title, content in sections:
+        if content:
+            add_heading(title, level=2)
+            add_body(content)
+            doc.add_paragraph()
+
+    # Footer note
+    footer_p = doc.add_paragraph()
+    footer_r = footer_p.add_run(
+        f"Generated {created_at.strftime('%B %d, %Y') if created_at else 'N/A'} by Hermes AI · "
+        "Burger Consulting LLC · EIN 84-3113166 · 105 E 117th St Apt 5F, New York NY 10035 · "
+        "procurement@burgergov.com"
+    )
+    footer_r.font.size = Pt(8)
+    footer_r.font.color.rgb = RGBColor(0x9C, 0xA3, 0xAF)
+    footer_r.italic = True
+
+    buf = io.BytesIO()
+    doc.save(buf)
+    buf.seek(0)
+
+    filename = f"BCG_Proposal_{sol_id.replace('/', '-')}_{datetime.now().strftime('%Y%m%d')}.docx"
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+# ──────────────── Subcontract Agreement ────────────────
+
+class AgreementSignRequest(BaseModel):
+    signed_by: str
+
+
+@app.post("/api/contracts/{contract_id}/agreement/generate")
+async def generate_agreement(contract_id: str, _: None = Depends(_require_admin)):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT c.contract_number, c.agency, c.contract_value, c.prime_margin_pct,
+               c.subcontract_value, c.performance_start, c.performance_end,
+               c.solicitation_id, v.legal_name, v.email, v.city, v.state
+        FROM active_contracts c
+        LEFT JOIN vendor_registry v ON c.vendor_id = v.id
+        WHERE c.id = %s::uuid
+    """, (contract_id,))
+    row = cur.fetchone()
+    if not row:
+        cur.close()
+        conn.close()
+        raise HTTPException(status_code=404, detail="Contract not found")
+
+    (contract_number, agency, contract_value, prime_margin_pct, subcontract_value,
+     perf_start, perf_end, sol_id, vendor_name, vendor_email,
+     vendor_city, vendor_state) = row
+
+    perf_start_str = perf_start.strftime("%B %d, %Y") if perf_start else "TBD"
+    perf_end_str = perf_end.strftime("%B %d, %Y") if perf_end else "TBD"
+    sub_value_str = f"${float(subcontract_value):,.2f}" if subcontract_value else "See Exhibit A"
+
+    prompt = f"""Draft a professional federal subcontract agreement between:
+
+PRIME CONTRACTOR: Burger Consulting LLC, a New York LLC (EIN 84-3113166), 105 E 117th St Apt 5F, New York NY 10035 ("Prime")
+SUBCONTRACTOR: {vendor_name or "Subcontractor"}{f", {vendor_city}, {vendor_state}" if vendor_city else ""} ("Subcontractor")
+
+CONTRACT DETAILS:
+- Prime Contract Number: {contract_number}
+- Federal Agency: {agency or "Federal Agency"}
+- Solicitation ID: {sol_id or "N/A"}
+- Subcontract Value: {sub_value_str}
+- Period of Performance: {perf_start_str} – {perf_end_str}
+
+Include the following sections in order:
+1. Parties and Recitals
+2. Scope of Work (reference prime contract scope; Subcontractor shall perform IT services as directed)
+3. Compensation and Payment (Pay-When-Paid: payment within 30 days of Prime's receipt from agency; Net-30)
+4. Period of Performance
+5. Deliverables and Acceptance
+6. Representations and Warranties (8(a) compliance if applicable, cyber requirements, Section 508)
+7. Flow-Down Clauses (FAR 52.222-26 Equal Opportunity, FAR 52.222-35 Veterans, FAR 52.204-21 Basic Safeguarding)
+8. Intellectual Property (work-for-hire; all deliverables belong to U.S. Government)
+9. Confidentiality
+10. Termination (for convenience and for cause)
+11. Dispute Resolution (governing law: New York; arbitration)
+12. Signatures (Prime signature line for Timothy J. Burger, President; Subcontractor signature line)
+
+Write in formal legal prose. Keep it concise but complete — approximately 800-1000 words.
+Do not use placeholders like [INSERT]. Use the actual values provided above.
+Return only the agreement text, no commentary."""
+
+    try:
+        resp = client.models.generate_content(
+            model="gemini-2.5-pro",
+            contents=[prompt],
+            config=types.GenerateContentConfig(temperature=0.1)
+        )
+        agreement_text = resp.text.strip()
+    except Exception as e:
+        cur.close()
+        conn.close()
+        raise HTTPException(status_code=500, detail=f"Agreement generation failed: {str(e)}")
+
+    cur.execute("""
+        UPDATE active_contracts
+        SET subcontract_agreement = %s, agreement_signed_at = NULL, agreement_signed_by = NULL
+        WHERE id = %s::uuid
+        RETURNING id
+    """, (agreement_text, contract_id))
+    conn.commit()
+    cur.close()
+    conn.close()
+    return {"success": True, "agreement": agreement_text}
+
+
+@app.get("/api/contracts/{contract_id}/agreement")
+async def get_agreement(contract_id: str):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT subcontract_agreement, agreement_signed_at, agreement_signed_by,
+               contract_number, vendor_id
+        FROM active_contracts WHERE id = %s::uuid
+    """, (contract_id,))
+    row = cur.fetchone()
+    cur.close()
+    conn.close()
+    if not row:
+        raise HTTPException(status_code=404, detail="Contract not found")
+    agreement, signed_at, signed_by, contract_number, vendor_id = row
+    return {
+        "contract_id": contract_id,
+        "contract_number": contract_number,
+        "agreement": agreement,
+        "signed": signed_at is not None,
+        "signed_at": signed_at.isoformat() if signed_at else None,
+        "signed_by": signed_by,
+    }
+
+
+@app.post("/api/contracts/{contract_id}/agreement/sign")
+async def sign_agreement(contract_id: str, request: AgreementSignRequest):
+    if not request.signed_by or len(request.signed_by.strip()) < 2:
+        raise HTTPException(status_code=400, detail="Full name required to sign")
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        UPDATE active_contracts
+        SET agreement_signed_at = NOW(), agreement_signed_by = %s
+        WHERE id = %s::uuid
+          AND subcontract_agreement IS NOT NULL
+          AND agreement_signed_at IS NULL
+        RETURNING id, agreement_signed_at
+    """, (request.signed_by.strip(), contract_id))
+    row = cur.fetchone()
+    conn.commit()
+    cur.close()
+    conn.close()
+    if not row:
+        raise HTTPException(status_code=400, detail="Agreement not found, not yet generated, or already signed")
+    return {
+        "success": True,
+        "signed_at": row[1].isoformat() if row[1] else None,
+        "signed_by": request.signed_by.strip(),
+    }
