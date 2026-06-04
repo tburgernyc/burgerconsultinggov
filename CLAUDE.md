@@ -1,5 +1,5 @@
 # Burger Consulting LLC — Project Handoff
-**Last updated: 2026-06-03 | Git: `ddac047`**
+**Last updated: 2026-06-04 | Git: `ddac047`**
 
 This file is the single source of truth for resuming work on this project.
 Read it top to bottom before touching any code.
@@ -26,15 +26,13 @@ The software — called **Hermes** — automates the entire pipeline.
 | Item | Value |
 |---|---|
 | **Production URL** | https://www.burgergov.com |
-| **Server IP** | `34.41.27.10` (GCP, `us-central1`) |
+| **Server IP** | `35.253.69.41` (GCP, `us-central1-b`) — reserved static as `hermes-static-ip` on 2026-06-04 |
 | **Admin login** | `procurement@burgergov.com` |
 | **Git repo** | `github.com/tburgernyc/burgerconsultinggov` |
 | **Branch** | `main` |
 
-> **IMPORTANT — GCP IP:** The external IP (`34.41.27.10`) is still **ephemeral**.
-> If the instance ever stops/restarts, the IP may change and DNS will break again.
-> Go to GCP Console → VPC Network → IP Addresses → Reserve `34.41.27.10` as static.
-> This happened once already (June 3, 2026) and took the site down.
+> **GCP IP is now static.** Reserved as `hermes-static-ip` on 2026-06-04.
+> IP `35.253.69.41` will not change on instance stop/restart. DNS is correct.
 
 ---
 
@@ -325,7 +323,7 @@ git push
 ## Remaining Work (prioritized)
 
 ### Must Do (external — you have to do these)
-- [ ] **Reserve GCP IP as static** — GCP Console → VPC Network → IP Addresses → Reserve `34.41.27.10`
+- [x] **Reserve GCP IP as static** — Done 2026-06-04, reserved as `hermes-static-ip` (`35.253.69.41`)
 - [ ] **Request SAM.gov elevated API access** — sam.gov/content/entity-api — unlocks contact email/phone on discovered prospects
 - [ ] **Update `CAGE_CODE` in `.env`** once assigned, then rebuild frontend
 
