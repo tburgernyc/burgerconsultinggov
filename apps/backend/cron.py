@@ -164,7 +164,7 @@ async def cron_deadline_monitor() -> None:
             SELECT solicitation_id, agency, response_deadline
             FROM solicitation_queue
             WHERE response_deadline IS NOT NULL
-              AND phase_status NOT IN ('AWARDED', 'REJECTED')
+              AND phase_status NOT IN ('AWARDED', 'REJECTED', 'SUBMITTED')
               AND deadline_alert_sent = false
               AND response_deadline > NOW()
               AND response_deadline <= NOW() + INTERVAL '73 hours'
