@@ -11,6 +11,7 @@ from cron import (
     cron_ar_aging,
     cron_deadline_monitor,
     cron_document_expiry_monitor,
+    cron_morning_brief_email,
     cron_outreach_followup,
     cron_sam_scan,
     cron_usaspending_intelligence,
@@ -71,8 +72,9 @@ async def lifespan(app: FastAPI):
     scheduler.add_job(cron_usaspending_intelligence, CronTrigger(hour=6, minute=0))
     scheduler.add_job(cron_ar_aging, CronTrigger(hour=17, minute=0))
     scheduler.add_job(cron_outreach_followup, CronTrigger(hour=9, minute=0))
+    scheduler.add_job(cron_morning_brief_email, CronTrigger(hour=8, minute=30))
     scheduler.start()
-    print("[CRON] Scheduler started — SAM scan 7/11/15/19h, expiry 8h, deadline 7:30h, intelligence 6h, AR 17h, outreach followup 9h ET")
+    print("[CRON] Scheduler started — SAM scan 7/11/15/19h, expiry 8h, deadline 7:30h, intelligence 6h, AR 17h, outreach followup 9h, brief 8:30h ET")
 
     yield
 

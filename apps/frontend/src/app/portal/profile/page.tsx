@@ -30,6 +30,9 @@ export default function ProfilePage() {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [pwForm, setPwForm] = useState({ current: '', next: '', confirm: '' });
+  const [pwSaving, setPwSaving] = useState(false);
+  const [pwMsg, setPwMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [form, setForm] = useState({
     contact_name: '', phone: '', tech_stack: '',
     primary_skill: '', github_url: '', portfolio_url: '',
@@ -86,6 +89,29 @@ export default function ProfilePage() {
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
     } finally { setSaving(false); }
+  }
+
+  async function changePassword() {
+    if (pwForm.next !== pwForm.confirm) {
+      setPwMsg({ ok: false, text: 'New passwords do not match.' }); return;
+    }
+    if (pwForm.next.length < 8) {
+      setPwMsg({ ok: false, text: 'New password must be at least 8 characters.' }); return;
+    }
+    setPwSaving(true); setPwMsg(null);
+    try {
+      const res = await fetch(`${API}/api/vendor-password`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ current_password: pwForm.current, new_password: pwForm.next }),
+      });
+      if (res.ok) {
+        setPwMsg({ ok: true, text: 'Password updated successfully.' });
+        setPwForm({ current: '', next: '', confirm: '' });
+      } else {
+        const d = await res.json();
+        setPwMsg({ ok: false, text: d.detail || `Failed (${res.status})` });
+      }
+    } finally { setPwSaving(false); }
   }
 
   const inp: React.CSSProperties = {
@@ -276,6 +302,38 @@ export default function ProfilePage() {
                 SAM registration changes require admin review — email{' '}
                 <a href="mailto:procurement@burgergov.com" style={{ color: 'var(--pv-navy)', fontWeight: 600 }}>procurement@burgergov.com</a>.
               </p>
+            </div>
+            {/* Change Password */}
+            <div className="pv-card pv-fade pv-d4">
+              <div style={{ fontFamily: "'DM Serif Display', serif", fontSize: '1rem', color: 'var(--pv-text)', marginBottom: '1rem' }}>
+                Change Password
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', maxWidth: 400 }}>
+                {[
+                  { label: 'Current Password', key: 'current' as const },
+                  { label: 'New Password', key: 'next' as const },
+                  { label: 'Confirm New Password', key: 'confirm' as const },
+                ].map(field => (
+                  <div key={field.key}>
+                    <label style={{ fontSize: '0.78rem', color: 'var(--pv-muted)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>{field.label}</label>
+                    <input
+                      type="password"
+                      style={inp}
+                      value={pwForm[field.key]}
+                      onChange={e => setPwForm(p => ({ ...p, [field.key]: e.target.value }))}
+                      onKeyDown={e => e.key === 'Enter' && changePassword()}
+                    />
+                  </div>
+                ))}
+                {pwMsg && (
+                  <div style={{ fontSize: '0.82rem', fontWeight: 600, color: pwMsg.ok ? 'var(--pv-success)' : 'var(--pv-danger)' }}>
+                    {pwMsg.ok ? '✓ ' : '✕ '}{pwMsg.text}
+                  </div>
+                )}
+                <button onClick={changePassword} disabled={pwSaving || !pwForm.current || !pwForm.next} className="pv-btn pv-btn-navy pv-btn-sm" style={{ alignSelf: 'flex-start' }}>
+                  {pwSaving ? 'Updating…' : 'Update Password'}
+                </button>
+              </div>
             </div>
           </>
         )}

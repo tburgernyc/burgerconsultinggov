@@ -247,3 +247,106 @@ def email_outreach_followup2(to: str, entity_name: str, sol_id: str,
     )
     subject = f"FINAL NOTICE: Quote Deadline {deadline_str} — {sol_id}"
     _send_email(to, subject, _wrap(body))
+
+
+def email_admin_new_vendor_application(to: str, legal_name: str,
+                                        contact_name: str, vendor_email: str) -> None:
+    approve_url = f"{_PORTAL_URL}/admin/approvals"
+    body = (
+        '<h2 style="color:#0a1628;margin:0 0 16px;font-size:20px">New Vendor Application</h2>'
+        '<p>A new subcontractor has submitted a vendor partnership application and is awaiting your review.</p>'
+        '<table style="width:100%;border-collapse:collapse;margin:16px 0">'
+        f'<tr style="background:#f4f6fa"><td style="padding:10px 12px;color:#6b7a99;font-size:13px;width:40%">Business Name</td><td style="padding:10px 12px;font-weight:700">{legal_name}</td></tr>'
+        f'<tr><td style="padding:10px 12px;color:#6b7a99;font-size:13px">Contact</td><td style="padding:10px 12px">{contact_name}</td></tr>'
+        f'<tr style="background:#f4f6fa"><td style="padding:10px 12px;color:#6b7a99;font-size:13px">Email</td><td style="padding:10px 12px">{vendor_email}</td></tr>'
+        '</table>'
+        f'<div style="text-align:center;margin:24px 0"><a href="{approve_url}" style="background:#0a1628;color:#c9a84c;padding:12px 32px;border-radius:6px;text-decoration:none;font-weight:700;font-size:15px;display:inline-block">Review in Approval Queue →</a></div>'
+    )
+    _send_email(to, f"New Vendor Application — {legal_name}", _wrap(body))
+
+
+def email_morning_brief(to: str, new_opps: int, pipeline_value: float,
+                         projected_revenue: float, accounts_receivable: float,
+                         pending_approvals: int, deadline_alerts: list[dict],
+                         outreach_summary: dict, top_opps: list[dict]) -> None:
+    from datetime import date
+    date_str = date.today().strftime("%A, %B %d, %Y")
+
+    def _fmt(n: float) -> str:
+        return '$' + f'{n:,.0f}'
+
+    alerts_html = ""
+    if deadline_alerts:
+        rows = "".join(
+            f'<tr><td style="padding:6px 8px;font-size:13px;font-weight:700">{a["solicitation_id"]}</td>'
+            f'<td style="padding:6px 8px;font-size:13px;color:#6b7a99">{a.get("agency","—")}</td>'
+            f'<td style="padding:6px 8px;font-size:13px;color:{"#dc2626" if (a.get("hours_left") or 99) <= 24 else "#d97706"};font-weight:700">{a.get("hours_left","?")}h left</td></tr>'
+            for a in deadline_alerts[:5]
+        )
+        alerts_html = (
+            '<div style="margin:16px 0">'
+            '<div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:#dc2626;margin-bottom:8px">⚡ Deadline Alerts</div>'
+            f'<table style="width:100%;border-collapse:collapse">{rows}</table>'
+            '</div>'
+        )
+
+    opps_html = ""
+    if top_opps:
+        rows = "".join(
+            f'<tr style="{"background:#f4f6fa" if i % 2 == 0 else ""}">'
+            f'<td style="padding:6px 8px;font-size:13px;font-weight:700">{o["solicitation_id"]}</td>'
+            f'<td style="padding:6px 8px;font-size:12px;color:#6b7a99;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{o.get("agency","—")}</td>'
+            f'<td style="padding:6px 8px;font-size:13px;font-weight:600">{_fmt(o["estimated_value"]) if o.get("estimated_value") else "—"}</td>'
+            f'<td style="padding:6px 8px"><span style="background:{"#dcfce7" if (o.get("triage_score") or 0) >= 8 else "#fef9c3" if (o.get("triage_score") or 0) >= 6 else "#f4f6fa"};color:{"#166534" if (o.get("triage_score") or 0) >= 8 else "#854d0e" if (o.get("triage_score") or 0) >= 6 else "#6b7a99"};padding:2px 7px;border-radius:4px;font-size:12px;font-weight:700">{o.get("triage_score","—")}/10</span></td>'
+            f'</tr>'
+            for i, o in enumerate(top_opps[:5])
+        )
+        opps_html = (
+            '<div style="margin:16px 0">'
+            '<div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:#0a1628;margin-bottom:8px">New Opportunities (Last 24h)</div>'
+            f'<table style="width:100%;border-collapse:collapse">{rows}</table>'
+            '</div>'
+        )
+
+    action_badge = (
+        f'<span style="background:#dc2626;color:#fff;padding:2px 8px;border-radius:4px;font-size:12px;font-weight:700">{pending_approvals} pending</span>'
+        if pending_approvals > 0 else
+        '<span style="background:#dcfce7;color:#166534;padding:2px 8px;border-radius:4px;font-size:12px;font-weight:700">Clear</span>'
+    )
+
+    admin_url = f"{_PORTAL_URL}/admin"
+    body = (
+        f'<h2 style="color:#0a1628;margin:0 0 4px;font-size:20px">Morning Brief</h2>'
+        f'<p style="color:#6b7a99;font-size:13px;margin:0 0 20px">{date_str} · Hermes PMO Engine</p>'
+
+        '<table style="width:100%;border-collapse:collapse;margin:0 0 16px">'
+        f'<tr>'
+        f'<td style="padding:12px;background:#f0f6ff;border-radius:6px;text-align:center;width:33%"><div style="font-size:11px;color:#6b7a99;font-weight:700;text-transform:uppercase;letter-spacing:.05em">Pipeline</div><div style="font-size:1.3rem;font-weight:800;color:#1E40AF">{_fmt(pipeline_value)}</div></td>'
+        f'<td style="width:8px"></td>'
+        f'<td style="padding:12px;background:#f0fdf4;border-radius:6px;text-align:center;width:33%"><div style="font-size:11px;color:#6b7a99;font-weight:700;text-transform:uppercase;letter-spacing:.05em">Proj. Revenue</div><div style="font-size:1.3rem;font-weight:800;color:#166534">{_fmt(projected_revenue)}</div></td>'
+        f'<td style="width:8px"></td>'
+        f'<td style="padding:12px;background:#{"fef2f2" if accounts_receivable > 0 else "f4f6fa"};border-radius:6px;text-align:center;width:33%"><div style="font-size:11px;color:#6b7a99;font-weight:700;text-transform:uppercase;letter-spacing:.05em">A/R Outstanding</div><div style="font-size:1.3rem;font-weight:800;color:{"#dc2626" if accounts_receivable > 0 else "#6b7a99"}">{_fmt(accounts_receivable)}</div></td>'
+        f'</tr></table>'
+
+        '<table style="width:100%;border-collapse:collapse;margin:0 0 16px">'
+        f'<tr>'
+        f'<td style="padding:10px 12px;background:#f4f6fa;border-radius:6px;width:48%"><span style="font-size:12px;color:#6b7a99">New Opps (24h)</span><br><span style="font-size:1.1rem;font-weight:800;color:#0a1628">{new_opps}</span></td>'
+        f'<td style="width:8px"></td>'
+        f'<td style="padding:10px 12px;background:#f4f6fa;border-radius:6px;width:48%"><span style="font-size:12px;color:#6b7a99">Approval Queue</span><br>{action_badge}</td>'
+        f'</tr>'
+        f'<tr style="height:8px"></tr>'
+        f'<tr>'
+        f'<td style="padding:10px 12px;background:#f4f6fa;border-radius:6px;width:48%"><span style="font-size:12px;color:#6b7a99">Active Campaigns</span><br><span style="font-size:1.1rem;font-weight:800;color:#7C3AED">{outreach_summary.get("active_campaigns",0)}</span></td>'
+        f'<td style="width:8px"></td>'
+        f'<td style="padding:10px 12px;background:#f4f6fa;border-radius:6px;width:48%"><span style="font-size:12px;color:#6b7a99">Quotes Received</span><br><span style="font-size:1.1rem;font-weight:800;color:#0a1628">{outreach_summary.get("quotes_received",0)}</span></td>'
+        f'</tr></table>'
+
+        f'{alerts_html}'
+        f'{opps_html}'
+
+        f'<div style="text-align:center;margin:24px 0"><a href="{admin_url}" style="background:#0a1628;color:#c9a84c;padding:12px 32px;border-radius:6px;text-decoration:none;font-weight:700;font-size:15px;display:inline-block">Open Command Center →</a></div>'
+    )
+    subject = f"Hermes Brief — {date_str} | {new_opps} new opp{'s' if new_opps != 1 else ''}, {_fmt(pipeline_value)} pipeline"
+    if pending_approvals > 0:
+        subject = f"⚡ {subject} | {pending_approvals} action{'s' if pending_approvals != 1 else ''} needed"
+    _send_email(to, subject, _wrap(body))

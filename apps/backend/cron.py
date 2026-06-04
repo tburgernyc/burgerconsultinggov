@@ -11,6 +11,7 @@ from emails import (
     email_ar_followup_sent,
     email_outreach_followup1,
     email_outreach_followup2,
+    email_morning_brief,
 )
 from helpers import _run_auto_triage
 
@@ -408,6 +409,103 @@ async def cron_outreach_followup() -> None:
         print(f"[CRON] Outreach follow-ups: {len(day3_rows)} Day-3, {len(day7_rows)} Day-7 sent.")
     except Exception as exc:
         print(f"[CRON ERROR] Outreach follow-up: {exc}")
+    finally:
+        if conn:
+            conn.close()
+
+
+async def cron_morning_brief_email() -> None:
+    """Daily 8:30 AM ET — email the morning brief digest to the admin."""
+    admin_email = os.getenv("ADMIN_EMAIL", "procurement@burgergov.com")
+    print("[CRON] Sending morning brief email...")
+    conn = None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+
+        cur.execute("""
+            SELECT
+              COALESCE(SUM(estimated_value), 0),
+              COALESCE(SUM(estimated_value) * 0.15, 0)
+            FROM solicitation_queue
+            WHERE phase_status IN ('READY_FOR_SOURCING','SOURCING_IN_PROGRESS',
+                                   'PRICING_PENDING','PROPOSAL_DRAFT','SUBMITTED')
+        """)
+        fin = cur.fetchone()
+        pipeline_value = float(fin[0])
+        projected_revenue = float(fin[1])
+
+        cur.execute("""
+            SELECT COALESCE(SUM(total_invoiced - total_received), 0)
+            FROM active_contracts WHERE total_invoiced > total_received
+        """)
+        accounts_receivable = float(cur.fetchone()[0])
+
+        cur.execute("""
+            SELECT solicitation_id, agency, naics, estimated_value, triage_score, status
+            FROM solicitation_queue
+            WHERE created_at >= NOW() - INTERVAL '24 hours'
+            ORDER BY triage_score DESC NULLS LAST
+        """)
+        new_opps = [{"solicitation_id": r[0], "agency": r[1], "naics": r[2],
+                     "estimated_value": float(r[3]) if r[3] else None,
+                     "triage_score": r[4], "status": r[5]} for r in cur.fetchall()]
+
+        cur.execute("""
+            SELECT COUNT(*) FROM vendor_registry
+            WHERE onboarding_status IN ('DOCS_SUBMITTED','PENDING')
+        """)
+        pending_vendor_count = cur.fetchone()[0]
+
+        cur.execute("""
+            SELECT COUNT(*) FROM solicitation_queue WHERE phase_status = 'READY_FOR_SOURCING'
+        """)
+        pending_rfq_count = cur.fetchone()[0]
+        pending_approvals = int(pending_vendor_count) + int(pending_rfq_count)
+
+        cur.execute("""
+            SELECT solicitation_id, agency, response_deadline
+            FROM solicitation_queue
+            WHERE response_deadline IS NOT NULL
+              AND response_deadline > NOW()
+              AND response_deadline <= NOW() + INTERVAL '73 hours'
+              AND phase_status NOT IN ('AWARDED','REJECTED','SUBMITTED')
+            ORDER BY response_deadline ASC
+        """)
+        now = datetime.utcnow()
+        deadline_alerts = [{"solicitation_id": r[0], "agency": r[1],
+                             "hours_left": max(0, int((r[2].replace(tzinfo=None) - now).total_seconds() / 3600))}
+                            for r in cur.fetchall()]
+
+        cur.execute("""
+            SELECT
+              COUNT(*) FILTER (WHERE status = 'SENT') as active_campaigns,
+              COUNT(*) FILTER (WHERE status = 'SUBMITTED') as quotes_received
+            FROM outreach_campaigns
+            WHERE day0_sent_at >= NOW() - INTERVAL '30 days'
+        """)
+        outreach_row = cur.fetchone()
+        outreach_summary = {
+            "active_campaigns": int(outreach_row[0] or 0),
+            "quotes_received": int(outreach_row[1] or 0),
+        }
+
+        cur.close()
+
+        email_morning_brief(
+            admin_email,
+            new_opps=len(new_opps),
+            pipeline_value=pipeline_value,
+            projected_revenue=projected_revenue,
+            accounts_receivable=accounts_receivable,
+            pending_approvals=pending_approvals,
+            deadline_alerts=deadline_alerts,
+            outreach_summary=outreach_summary,
+            top_opps=new_opps,
+        )
+        print("[CRON] Morning brief email sent.")
+    except Exception as exc:
+        print(f"[CRON ERROR] Morning brief email: {exc}")
     finally:
         if conn:
             conn.close()

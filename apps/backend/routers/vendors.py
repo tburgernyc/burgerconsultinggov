@@ -1,11 +1,12 @@
+import os
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
-from auth import _require_admin, _require_vendor
+from auth import _require_admin, _require_vendor, _pwd_context
 from db import get_db_connection
-from emails import email_vendor_onboarding_received
+from emails import email_vendor_onboarding_received, email_admin_new_vendor_application
 from models import VendorRegisterRequest, VendorUpdateRequest
 
 router = APIRouter()
@@ -138,6 +139,9 @@ async def register_vendor(request: VendorRegisterRequest):
         cur.close()
         conn.close()
         email_vendor_onboarding_received(request.email, request.legal_name, request.contact_name)
+        admin_email = os.getenv("ADMIN_EMAIL", "procurement@burgergov.com")
+        email_admin_new_vendor_application(admin_email, request.legal_name,
+                                            request.contact_name, request.email)
         return {"status": "registered", "vendor_id": str(vendor_id),
                 "message": "Application received. Timothy will review within 24 hours."}
     except Exception as e:
@@ -242,3 +246,39 @@ async def upload_vendor_doc(vendor_id: str, doc_type: str = Query(...),
     cur.close()
     conn.close()
     return {"status": "registered", "doc_id": str(doc_id), "note": "Upload file via portal UI"}
+
+
+class _PasswordChangeRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+
+@router.put("/api/vendor-password")
+async def change_vendor_password(request: _PasswordChangeRequest,
+                                  vendor_id: str = Depends(_require_vendor)):
+    if len(request.new_password) < 8:
+        raise HTTPException(status_code=400, detail="New password must be at least 8 characters")
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT portal_password_hash FROM vendor_registry WHERE id=%s::uuid", (vendor_id,))
+    row = cur.fetchone()
+    if not row or not row[0]:
+        cur.close()
+        conn.close()
+        raise HTTPException(status_code=404, detail="Vendor not found")
+
+    if not _pwd_context.verify(request.current_password, row[0]):
+        cur.close()
+        conn.close()
+        raise HTTPException(status_code=400, detail="Current password is incorrect")
+
+    new_hash = _pwd_context.hash(request.new_password)
+    cur.execute(
+        "UPDATE vendor_registry SET portal_password_hash=%s WHERE id=%s::uuid",
+        (new_hash, vendor_id),
+    )
+    conn.commit()
+    cur.close()
+    conn.close()
+    return {"status": "password_updated"}
