@@ -2,8 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { PortalShell } from '@/components/PortalShell';
-
-const API = '/api/vendor';
+import { VENDOR_API as API } from '@/lib/api';
 
 type Contract = { id: string; contract_number: string; agency: string; total_invoiced: number; total_received: number; contract_value: number; };
 

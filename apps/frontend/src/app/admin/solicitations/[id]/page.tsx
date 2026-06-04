@@ -3,21 +3,12 @@
 import { use, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { AdminShell } from '@/components/AdminShell';
-
-const API = '/api/proxy';
+import { ADMIN_API as API } from '@/lib/api';
+import { fmt, recClass as recBadge } from '@/lib/format';
 
 type Solicitation = { solicitation_id: string; agency: string; naics: string; estimated_value: number; triage_score: number; status: string; response_deadline: string; };
 type Quote = { id: string; vendor_id: string; vendor_name: string; total_amount: number; labor_rate_hourly: number; pay_when_paid_confirmed: boolean; recommendation: string; status: string; notes: string; ai_evaluation?: { rank?: number; rationale?: string; risk_flags?: string[]; sca_compliant?: boolean; }; };
 type AiEval = { recommended_vendor: string; recommended_award_price: number; evaluation_summary: string; key_risks: string[]; };
-
-const fmt = (n: number) => '$' + Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 0 });
-
-function recBadge(r: string) {
-  if (r === 'AWARD' || r === 'PROCEED') return 'pv-badge-green';
-  if (r === 'CLARIFY') return 'pv-badge-gold';
-  if (r === 'REJECT') return 'pv-badge-red';
-  return 'pv-badge-gray';
-}
 
 export default function SolicitationDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);

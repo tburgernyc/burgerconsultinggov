@@ -3,8 +3,8 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { AdminShell } from '@/components/AdminShell';
-
-const API = '/api/proxy';
+import { ADMIN_API as API } from '@/lib/api';
+import { fmt, scoreClass } from '@/lib/format';
 
 type MorningBrief = {
   new_opportunities: Opportunity[];
@@ -18,14 +18,7 @@ type VendorApp = { id: string; legal_name: string; email: string; onboarding_sta
 type Rfq = { solicitation_id: string; agency: string; triage_score: number; phase_status: string; };
 type ContractHealth = { contract_number: string; vendor_name: string; contract_value: number; total_invoiced: number; total_received: number; next_invoice_date: string; };
 
-const fmt = (n: number) => '$' + Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 0 });
 const today = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
-
-function scoreColor(s: number): string {
-  if (s >= 8) return 'pv-badge-green';
-  if (s >= 6) return 'pv-badge-gold';
-  return 'pv-badge-red';
-}
 
 export default function AdminDashboard() {
   const [brief, setBrief] = useState<MorningBrief | null>(null);
@@ -156,7 +149,7 @@ export default function AdminDashboard() {
                           <td style={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--pv-text-mid)', fontSize: '0.83rem' }}>{opp.agency || '—'}</td>
                           <td><span className="pv-badge pv-badge-navy">{opp.naics || '—'}</span></td>
                           <td style={{ fontWeight: 600 }}>{opp.estimated_value ? fmt(opp.estimated_value) : '—'}</td>
-                          <td><span className={`pv-badge ${scoreColor(opp.triage_score)}`}>{opp.triage_score ?? '—'}/10</span></td>
+                          <td><span className={`pv-badge ${scoreClass(opp.triage_score)}`}>{opp.triage_score ?? '—'}/10</span></td>
                           <td><span className="pv-badge pv-badge-gray" style={{ fontSize: '0.62rem' }}>{(opp.status || '').replace(/_/g, ' ')}</span></td>
                           <td><Link href={`/admin/solicitations/${opp.solicitation_id}`} className="pv-btn pv-btn-navy pv-btn-sm">View</Link></td>
                         </tr>

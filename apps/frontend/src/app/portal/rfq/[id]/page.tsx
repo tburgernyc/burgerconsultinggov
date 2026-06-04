@@ -4,8 +4,7 @@ import { use, useEffect, useMemo, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import Link from 'next/link';
 import { PortalShell } from '@/components/PortalShell';
-
-const API = '/api/vendor';
+import { VENDOR_API as API } from '@/lib/api';
 
 type Rfq = { solicitation_id: string; agency: string; naics: string; estimated_value: number; status: string; response_deadline: string; };
 

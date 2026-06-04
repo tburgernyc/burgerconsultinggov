@@ -3,8 +3,8 @@
 import { use, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { PortalShell } from '@/components/PortalShell';
-
-const API = '/api/vendor';
+import { VENDOR_API as API } from '@/lib/api';
+import { fmt } from '@/lib/format';
 
 type Contract = {
   id: string; contract_number: string; agency: string;
@@ -68,8 +68,6 @@ export default function ContractDetailPage({ params }: { params: Promise<{ id: s
   const pending = invoiced - received;
   const invoicedPct = value > 0 ? Math.min(100, Math.round((invoiced / value) * 100)) : 0;
   const receivedPct = value > 0 ? Math.min(100, Math.round((received / value) * 100)) : 0;
-
-  const fmt = (n: number) => '$' + n.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 
   return (
     <PortalShell

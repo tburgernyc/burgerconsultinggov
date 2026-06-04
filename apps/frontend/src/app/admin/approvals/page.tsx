@@ -3,8 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { AdminShell } from '@/components/AdminShell';
-
-const API = '/api/proxy';
+import { ADMIN_API as API } from '@/lib/api';
 
 type VendorApp = { id: string; legal_name: string; email: string; onboarding_status: string; created_at: string; };
 type Rfq = { solicitation_id: string; agency: string; triage_score: number; phase_status: string; };

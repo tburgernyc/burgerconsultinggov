@@ -1,6 +1,7 @@
 'use client';
 
 import { use, useEffect, useState } from 'react';
+import { fmt } from '@/lib/format';
 
 const API = process.env.NEXT_PUBLIC_API_URL || '';
 const PAGE_LOAD_TIME = Date.now();
@@ -137,7 +138,6 @@ export default function QuotePage({ params }: { params: Promise<{ token: string 
     </div>
   );
 
-  const fmt = (n: number) => '$' + n.toLocaleString('en-US', { maximumFractionDigits: 0 });
   const deadline = brief?.response_deadline ? new Date(brief.response_deadline) : null;
   const daysLeft = deadline ? Math.ceil((deadline.getTime() - PAGE_LOAD_TIME) / 86400000) : null;
 

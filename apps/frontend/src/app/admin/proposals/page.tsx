@@ -2,14 +2,11 @@
 
 import { useEffect, useState } from 'react';
 import { AdminShell } from '@/components/AdminShell';
-
-const API = '/api/proxy';
+import { ADMIN_API as API } from '@/lib/api';
+import { winClass as winColor, winColor as winText } from '@/lib/format';
 
 type Proposal = { id: string; solicitation_id: string; agency: string; naics: string; win_probability: number; status: string; created_at: string; };
 type ProposalDetail = { solicitation_id: string; technical_approach: string; management_plan: string; pricing_narrative: string; past_performance: string; win_probability: number; status: string; };
-
-function winColor(p: number) { return p >= 70 ? 'pv-badge-green' : p >= 40 ? 'pv-badge-gold' : 'pv-badge-red'; }
-function winText(p: number) { return p >= 70 ? 'var(--pv-success)' : p >= 40 ? 'var(--pv-warning)' : 'var(--pv-danger)'; }
 
 export default function ProposalsPage() {
   const [proposals, setProposals] = useState<Proposal[]>([]);

@@ -2,13 +2,11 @@
 
 import { useEffect, useState } from 'react';
 import { AdminShell } from '@/components/AdminShell';
-
-const API = '/api/proxy';
+import { ADMIN_API as API } from '@/lib/api';
+import { fmt } from '@/lib/format';
 
 type Contract = { id: string; contract_number: string; agency: string; contract_value: number; prime_margin_pct: number; vendor_name: string; subcontract_value: number; performance_start: string; performance_end: string; next_invoice_date: string; total_invoiced: number; total_received: number; contract_status: string; };
 type Agreement = { contract_id: string; contract_number: string; agreement: string | null; signed: boolean; signed_at: string | null; signed_by: string | null; };
-
-const fmt = (n: number) => '$' + Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 0 });
 
 export default function AdminContractsPage() {
   const [contracts, setContracts] = useState<Contract[]>([]);

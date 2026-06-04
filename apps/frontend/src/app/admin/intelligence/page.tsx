@@ -2,15 +2,15 @@
 
 import { useEffect, useState } from 'react';
 import { AdminShell } from '@/components/AdminShell';
-
-const API = '/api/proxy';
+import { ADMIN_API as API } from '@/lib/api';
+import { fmt } from '@/lib/format';
 
 type Award = { naics: string; agency: string; award_amount: number; awardee_name: string; award_date: string; contract_number: string; description: string; };
 type MarketStat = { naics: string; award_count: number; avg_award: number; min_award: number; max_award: number; median_award: number; };
 type IntelData = { awards: Award[]; market_stats: MarketStat[]; last_updated: string; };
 
 const NAICS_LABELS: Record<string, string> = { '541511': 'Software Development', '541519': 'IT Services & PM', '541512': 'Systems Design' };
-const fmt = (n: number) => n ? '$' + Number(n).toLocaleString('en-US', { maximumFractionDigits: 0 }) : '—';
+
 
 export default function IntelligencePage() {
   const [data, setData] = useState<IntelData | null>(null);

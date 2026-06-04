@@ -3,8 +3,8 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { AdminShell } from '@/components/AdminShell';
-
-const API = '/api/proxy';
+import { ADMIN_API as API } from '@/lib/api';
+import { fmt, scoreClass, OUTREACH_STATUS_BADGE as STATUS_COLOR } from '@/lib/format';
 
 type Solicitation = { solicitation_id: string; agency: string; naics: string; estimated_value: number; response_deadline: string; phase_status: string; };
 type Prospect = {
@@ -20,11 +20,6 @@ type Campaign = {
   day7_sent_at: string | null; submitted_at: string | null;
 };
 
-const STATUS_COLOR: Record<string, string> = {
-  PENDING: 'pv-badge-gray', SENT: 'pv-badge-blue', OPENED: 'pv-badge-gold',
-  CLICKED: 'pv-badge-navy', SUBMITTED: 'pv-badge-green', BOUNCED: 'pv-badge-red',
-};
-const fmt = (n: number) => n ? '$' + Number(n).toLocaleString('en-US', { maximumFractionDigits: 0 }) : '—';
 const PAGE_LOAD_TIME = Date.now();
 
 export default function ProspectsPage() {
@@ -279,7 +274,7 @@ export default function ProspectsPage() {
                           <div style={{ color: 'var(--pv-muted)', fontSize: '0.75rem' }}>{c.contact_email || 'No email'}</div>
                         </td>
                         <td>
-                          <span className={`pv-badge ${c.qualification_score >= 8 ? 'pv-badge-green' : c.qualification_score >= 6 ? 'pv-badge-gold' : 'pv-badge-gray'}`}>
+                          <span className={`pv-badge ${scoreClass(c.qualification_score)}`}>
                             {c.qualification_score}/10
                           </span>
                         </td>
@@ -371,7 +366,7 @@ export default function ProspectsPage() {
                           )}
                         </td>
                         <td>
-                          <span className={`pv-badge ${p.qualification_score >= 8 ? 'pv-badge-green' : p.qualification_score >= 6 ? 'pv-badge-gold' : 'pv-badge-gray'}`}>
+                          <span className={`pv-badge ${scoreClass(p.qualification_score)}`}>
                             {p.qualification_score}/10
                           </span>
                         </td>

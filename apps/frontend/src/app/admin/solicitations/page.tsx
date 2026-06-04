@@ -3,29 +3,14 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { AdminShell } from '@/components/AdminShell';
-
-const API = '/api/proxy';
+import { ADMIN_API as API } from '@/lib/api';
+import { fmt, scoreClass, SOLICITATION_STATUS_BADGE as STATUS_BADGE } from '@/lib/format';
 
 type Solicitation = { solicitation_id: string; agency: string; naics: string; estimated_value: number; triage_score: number; status: string; response_deadline: string; created_at: string; };
 
 const STATUSES = ['PENDING_TRIAGE','TRIAGE_COMPLETE','READY_FOR_SOURCING','SOURCING_IN_PROGRESS','PRICING_PENDING','PROPOSAL_DRAFT','SUBMITTED','AWARDED','REJECTED'];
 
-const STATUS_BADGE: Record<string, string> = {
-  AWARDED: 'pv-badge-green', REJECTED: 'pv-badge-red',
-  READY_FOR_SOURCING: 'pv-badge-gold', SOURCING_IN_PROGRESS: 'pv-badge-blue',
-  TRIAGE_COMPLETE: 'pv-badge-navy', PENDING_TRIAGE: 'pv-badge-gray',
-  PROPOSAL_DRAFT: 'pv-badge-blue', SUBMITTED: 'pv-badge-blue', PRICING_PENDING: 'pv-badge-gold',
-};
-
-const fmt = (n: number) => '$' + Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 0 });
 const PAGE_LOAD_TIME = Date.now();
-
-function scoreClass(s: number | null): string {
-  if (!s) return 'pv-badge-gray';
-  if (s >= 8) return 'pv-badge-green';
-  if (s >= 6) return 'pv-badge-gold';
-  return 'pv-badge-red';
-}
 
 export default function SolicitationPipelinePage() {
   const [solicitations, setSolicitations] = useState<Solicitation[]>([]);

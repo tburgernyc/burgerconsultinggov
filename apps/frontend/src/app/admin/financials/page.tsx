@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { AdminShell } from '@/components/AdminShell';
-
-const API = '/api/proxy';
+import { ADMIN_API as API } from '@/lib/api';
+import { fmt } from '@/lib/format';
 
 type Financials = {
   pl_snapshot: { gross_revenue: number; estimated_cogs: number; estimated_gross_profit: number; gross_margin_pct: number; total_contracts: number; };
@@ -15,7 +15,6 @@ type Financials = {
 
 const NAICS_LABELS: Record<string, string> = { '541511': 'Software Development', '541519': 'IT Services & PM', '541512': 'Systems Design' };
 
-const fmt = (n: number) => '$' + Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 0 });
 const pct = (n: number) => `${Number(n || 0).toFixed(1)}%`;
 
 export default function FinancialsPage() {

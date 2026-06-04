@@ -4,8 +4,7 @@ import { useEffect, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import Link from 'next/link';
 import { PortalShell } from '@/components/PortalShell';
-
-const API = '/api/vendor';
+import { VENDOR_API as API } from '@/lib/api';
 
 type Contract = {
   id: string; contract_number: string; agency: string;
