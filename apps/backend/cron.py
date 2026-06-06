@@ -347,7 +347,7 @@ async def cron_outreach_followup() -> None:
         admin_domain = os.getenv("NEXTAUTH_URL", "https://www.burgergov.com")
 
         cur.execute("""
-            SELECT oc.id, oc.quote_token, oc.solicitation_id, vp.contact_email,
+            SELECT oc.id, oc.quote_token, oc.opt_out_token, oc.solicitation_id, vp.contact_email,
                    vp.entity_name, sq.agency, oc.day0_sent_at, sq.response_deadline
             FROM outreach_campaigns oc
             JOIN vendor_prospects vp ON oc.prospect_id = vp.id
@@ -360,12 +360,12 @@ async def cron_outreach_followup() -> None:
         """)
         day3_rows = cur.fetchall()
         for row in day3_rows:
-            campaign_id, token, sol_id, email, name, agency, _, deadline = row
+            campaign_id, token, opt_token, sol_id, email, name, agency, _, deadline = row
             if not email:
                 continue
             deadline_str = deadline.strftime("%B %d, %Y") if deadline else "TBD"
             quote_url = f"{admin_domain}/quote/{token}"
-            opt_out_url = f"{admin_domain}/optout/{token}"
+            opt_out_url = f"{admin_domain}/optout/{opt_token}"
             try:
                 email_outreach_followup1(email, name, sol_id, agency, quote_url, deadline_str, opt_out_url)
                 cur.execute(
@@ -377,7 +377,7 @@ async def cron_outreach_followup() -> None:
                 print(f"[CRON] Follow-up D3 failed for campaign {campaign_id}: {e}")
 
         cur.execute("""
-            SELECT oc.id, oc.quote_token, oc.solicitation_id, vp.contact_email,
+            SELECT oc.id, oc.quote_token, oc.opt_out_token, oc.solicitation_id, vp.contact_email,
                    vp.entity_name, sq.agency, sq.response_deadline
             FROM outreach_campaigns oc
             JOIN vendor_prospects vp ON oc.prospect_id = vp.id
@@ -390,12 +390,12 @@ async def cron_outreach_followup() -> None:
         """)
         day7_rows = cur.fetchall()
         for row in day7_rows:
-            campaign_id, token, sol_id, email, name, agency, deadline = row
+            campaign_id, token, opt_token, sol_id, email, name, agency, deadline = row
             if not email:
                 continue
             deadline_str = deadline.strftime("%B %d, %Y") if deadline else "TBD"
             quote_url = f"{admin_domain}/quote/{token}"
-            opt_out_url = f"{admin_domain}/optout/{token}"
+            opt_out_url = f"{admin_domain}/optout/{opt_token}"
             try:
                 email_outreach_followup2(email, name, sol_id, agency, quote_url, deadline_str, opt_out_url)
                 cur.execute(

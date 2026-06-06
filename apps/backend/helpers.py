@@ -1,14 +1,103 @@
-import asyncio
+import ipaddress
 import json
 import os
-import requests
+import socket
 import tempfile
 from typing import Optional
+from urllib.parse import urlparse
+
+import requests
 
 from db import get_db_connection
 from emails import email_rfq_dispatch
 from gemini import client, types
 from models import TriageReport
+
+# ── Safe PDF fetch (ENTERPRISE_AUDIT P1-4: SSRF + resource limits) ─────────────
+# Solicitation PDFs come from external URLs in SAM.gov/USASpending payloads, which
+# are themselves third-party data. A raw requests.get on that URL lets an attacker
+# (or a poisoned feed) point us at internal services or the GCP metadata endpoint,
+# or hand us a multi-GB body. Every fetch goes through fetch_pdf_to_temp().
+_PDF_HOST_ALLOWLIST = (
+    "sam.gov", "api.sam.gov", "beta.sam.gov", "falextracts.s3.amazonaws.com",
+    "s3.amazonaws.com", "amazonaws.com",
+    "usaspending.gov", "api.usaspending.gov", "files.usaspending.gov",
+)
+_PDF_MAX_BYTES = 25 * 1024 * 1024  # 25 MB hard cap
+_PDF_MAGIC = (b"%PDF-",)
+
+
+def _host_is_allowed(host: str) -> bool:
+    host = (host or "").lower().rstrip(".")
+    return any(host == h or host.endswith("." + h) for h in _PDF_HOST_ALLOWLIST)
+
+
+def _resolves_to_public_ip(host: str) -> bool:
+    """Resolve the host and confirm every A/AAAA record is a public, routable address.
+    Rejects loopback, link-local (incl. 169.254.169.254 metadata), private and
+    reserved ranges to block SSRF via DNS."""
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except socket.gaierror:
+        return False
+    if not infos:
+        return False
+    for info in infos:
+        addr = info[4][0]
+        try:
+            ip = ipaddress.ip_address(addr.split("%")[0])
+        except ValueError:
+            return False
+        if (ip.is_private or ip.is_loopback or ip.is_link_local
+                or ip.is_reserved or ip.is_multicast or ip.is_unspecified):
+            return False
+    return True
+
+
+def fetch_pdf_to_temp(url: str) -> str:
+    """Download an untrusted PDF URL to a temp file with SSRF + size + type guards.
+
+    Returns the temp file path on success. Raises ValueError on any policy violation
+    so callers can fail closed. The caller owns deleting the returned path.
+    """
+    parsed = urlparse(url or "")
+    if parsed.scheme != "https":
+        raise ValueError("PDF URL must be https")
+    host = parsed.hostname or ""
+    if not _host_is_allowed(host):
+        raise ValueError(f"PDF host '{host}' is not in the allowlist")
+    if not _resolves_to_public_ip(host):
+        raise ValueError(f"PDF host '{host}' resolves to a non-public address")
+
+    temp_path = None
+    try:
+        resp = requests.get(url, stream=True, timeout=30, allow_redirects=False)
+        resp.raise_for_status()
+        ctype = (resp.headers.get("Content-Type") or "").lower()
+        if "pdf" not in ctype and "octet-stream" not in ctype:
+            raise ValueError(f"Unexpected Content-Type '{ctype}' for PDF fetch")
+        total = 0
+        first_chunk = True
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+            temp_path = tmp.name
+            for chunk in resp.iter_content(chunk_size=8192):
+                if not chunk:
+                    continue
+                if first_chunk:
+                    if not chunk.startswith(_PDF_MAGIC):
+                        raise ValueError("Downloaded content is not a PDF (bad magic bytes)")
+                    first_chunk = False
+                total += len(chunk)
+                if total > _PDF_MAX_BYTES:
+                    raise ValueError("PDF exceeds 25 MB size cap")
+                tmp.write(chunk)
+        if first_chunk:
+            raise ValueError("Empty PDF response")
+        return temp_path
+    except Exception:
+        if temp_path and os.path.exists(temp_path):
+            os.remove(temp_path)
+        raise
 
 # Shared across auto-triage (cron) and manual triage (endpoint)
 TRIAGE_SYSTEM_INSTRUCTION = """
@@ -121,14 +210,9 @@ async def _run_auto_triage(sol_id: str, pdf_url: str) -> Optional[int]:
 
     temp_pdf_path = None
     try:
-        pdf_response = requests.get(pdf_url, stream=True, timeout=30)
-        pdf_response.raise_for_status()
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
-            for chunk in pdf_response.iter_content(chunk_size=8192):
-                tmp.write(chunk)
-            temp_pdf_path = tmp.name
+        temp_pdf_path = fetch_pdf_to_temp(pdf_url)
     except Exception as e:
-        print(f"[AUTO-TRIAGE] PDF download failed for {sol_id}: {e}")
+        print(f"[AUTO-TRIAGE] PDF download rejected/failed for {sol_id}: {e}")
         return None
 
     try:

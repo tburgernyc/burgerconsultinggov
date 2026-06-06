@@ -1,5 +1,5 @@
 import { auth } from '@/lib/auth';
-import { adminToken, gatewayToken } from '@/lib/backend-auth';
+import { adminToken, gatewayToken, isSameOrigin } from '@/lib/backend-auth';
 import { NextRequest, NextResponse } from 'next/server';
 
 const BACKEND = process.env.INTERNAL_API_URL || 'http://localhost:8000';
@@ -9,6 +9,11 @@ async function proxy(req: NextRequest, path: string[]): Promise<NextResponse> {
   const role = (session?.user as { role?: string })?.role;
   if (role !== 'admin') {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  // CSRF: reject cross-origin state-changing requests (P4-3).
+  if (req.method !== 'GET' && req.method !== 'HEAD' && !isSameOrigin(req)) {
+    return NextResponse.json({ error: 'Cross-origin request rejected' }, { status: 403 });
   }
 
   const search = req.nextUrl.searchParams.toString();

@@ -3,6 +3,46 @@
 **Companion to:** `ENTERPRISE_AUDIT.md`
 **Date:** 2026-06-06
 **Status:** Plan only — no application code changed yet.
+
+---
+
+## ✅ Execution status (updated 2026-06-06)
+
+All code-level items are **implemented** on branch `hardening/sprint-1`. Items requiring
+live GCP/infra changes or a tested rollout were **deferred to `OPS_CHECKLIST.md`** by decision.
+
+| # | Item | Status |
+|---|---|---|
+| 1 | P0-1 human gate on auto-dispatch | ✅ Done (incl. fixing a crash: `triage.py` imported a deleted `_auto_dispatch_rfq`) |
+| 2 | P0-2 public quote can't overwrite vetted vendors | ✅ Done (prior commit) |
+| 3 | P0-3 de-conflate secrets + close public surface | ✅ Done (prior commit) |
+| 4 | P1-1 login rate-limit + per-account lockout | ✅ Done (nginx zones + `login_attempts` lockout) |
+| 5 | P1-2 stop leaking internal errors | ✅ Done (`obs.fail` + correlation ids) |
+| 6 | P1-3 replace static admin password | ✅ Done (bcrypt in `admin_users`); **TOTP deferred** → OPS |
+| 7 | P1-4 SSRF + resource limits on PDF fetch | ✅ Done (`helpers.fetch_pdf_to_temp`) |
+| 8 | P1-5 prompt-injection hardening | ✅ Done (untrusted fences in quote-eval + discovery) |
+| 9 | P1-6 HTML-escape email interpolation | ✅ Done (`emails._e`) |
+| 10 | P2-1 bounded upload + magic bytes | ✅ Done |
+| 11 | P2-2 password policy (12 + complexity) | ✅ Done (backend + portal UI) |
+| 12 | P2-3 login enumeration (uniform timing) | ✅ Done (dummy bcrypt compare) |
+| 13 | P2-4 CSP tightening | ⏸ **Deferred** → OPS (needs live UI validation) |
+| 14 | P2-5 audit logging | ✅ Done (`audit_log` + `obs.audit` on key events) |
+| 15 | P2-6 secret management + rotation | ⏸ **Deferred** → OPS (rotation is an ops action) |
+| 16 | P2-7 real migrations | ✅ Done (fail-loud + `schema_version`; Alembic not adopted) |
+| 17 | P3-1 pin dependencies | ✅ Done (pinned to prod versions + `requirements.in`) |
+| 18 | P3-2 CI security gates | ✅ Done (`.github/workflows/security.yml`) |
+| 19 | P3-3 non-root container | ✅ Done (both Dockerfiles) |
+| 20 | P3-4 durable file storage (GCS) | ⏸ **Deferred** → OPS (infra) |
+| 21 | P3-5 DB scaling (PgBouncer) | ⏸ **Deferred** → OPS (infra) |
+| 22 | P3-6 declarative deploy | ⏸ **Deferred** → OPS (infra) |
+| 23 | P4-1 purpose-scoped tokens | ✅ Done (separate `opt_out_token`) |
+| 24 | P4-2 CORS tightening | ✅ Done (explicit `allow_headers`) |
+| 25 | P4-3 CSRF on proxy mutations | ✅ Done (same-origin check) |
+| 26 | P4-4 structured logging | ✅ Done (`obs` JSON logger; `print` conversion ongoing) |
+
+**Decisions taken:** admin = bcrypt-in-DB now / TOTP later; migrations = fail-loud raw SQL +
+version table (not Alembic); infra items deferred to an ops checklist; CSP deferred pending
+live verification. See `OPS_CHECKLIST.md` for deploy steps and the deferred work.
 **Confirmed prerequisite:** `nginx/nginx.conf` reviewed. The FastAPI `/api/` surface **is internet-facing** (nginx proxies public `/api/*` straight to `hermes_backend:8000`, except `/api/auth|proxy|vendor`). This is corrected in the audit and drives the sequencing below.
 
 ---

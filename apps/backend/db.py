@@ -250,6 +250,7 @@ CREATE TABLE IF NOT EXISTS outreach_campaigns (
   solicitation_id TEXT REFERENCES solicitation_queue(solicitation_id) ON DELETE CASCADE,
   prospect_id UUID REFERENCES vendor_prospects(id) ON DELETE CASCADE,
   quote_token UUID DEFAULT gen_random_uuid() UNIQUE,
+  opt_out_token UUID DEFAULT gen_random_uuid() UNIQUE,
   sow_brief TEXT,
   status TEXT DEFAULT 'PENDING',
   day0_sent_at TIMESTAMPTZ,
@@ -258,7 +259,43 @@ CREATE TABLE IF NOT EXISTS outreach_campaigns (
   submitted_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Admin credential lives in the DB as a bcrypt hash (P1-3), not a plaintext env var.
+CREATE TABLE IF NOT EXISTS admin_users (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  email TEXT UNIQUE NOT NULL,
+  name TEXT,
+  password_hash TEXT NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Per-account login throttle / lockout (P1-1), shared by admin + vendor logins.
+CREATE TABLE IF NOT EXISTS login_attempts (
+  email TEXT PRIMARY KEY,
+  failed_count INTEGER NOT NULL DEFAULT 0,
+  locked_until TIMESTAMPTZ,
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Append-only audit trail (P2-5).
+CREATE TABLE IF NOT EXISTS audit_log (
+  id BIGSERIAL PRIMARY KEY,
+  action TEXT NOT NULL,
+  actor TEXT,
+  target TEXT,
+  detail JSONB,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Schema version marker (P2-7).
+CREATE TABLE IF NOT EXISTS schema_version (
+  version INTEGER PRIMARY KEY,
+  applied_at TIMESTAMPTZ DEFAULT NOW()
+);
 """
+
+# Bump when SCHEMA_SQL/MIGRATIONS_SQL change in a way that must be recorded.
+SCHEMA_VERSION = 2
 
 MIGRATIONS_SQL = """
 ALTER TABLE solicitation_queue ADD COLUMN IF NOT EXISTS agency TEXT;
@@ -298,6 +335,9 @@ ALTER TABLE vendor_prospects ADD COLUMN IF NOT EXISTS entity_url TEXT;
 CREATE UNIQUE INDEX IF NOT EXISTS vendor_prospects_uei_idx ON vendor_prospects(uei) WHERE uei IS NOT NULL;
 ALTER TABLE vendor_registry ADD COLUMN IF NOT EXISTS onboarding_status TEXT DEFAULT 'PENDING';
 CREATE UNIQUE INDEX IF NOT EXISTS vendor_registry_email_idx ON vendor_registry(email) WHERE email IS NOT NULL;
+ALTER TABLE outreach_campaigns ADD COLUMN IF NOT EXISTS opt_out_token UUID DEFAULT gen_random_uuid();
+CREATE UNIQUE INDEX IF NOT EXISTS outreach_campaigns_optout_idx ON outreach_campaigns(opt_out_token) WHERE opt_out_token IS NOT NULL;
+CREATE INDEX IF NOT EXISTS audit_log_created_idx ON audit_log(created_at DESC);
 """
 
 

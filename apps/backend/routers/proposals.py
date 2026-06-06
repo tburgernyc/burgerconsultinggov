@@ -7,6 +7,7 @@ from auth import _require_admin
 from db import get_db_connection
 from gemini import client, types
 from models import ProposalGenerateRequest
+from obs import fail
 
 router = APIRouter()
 
@@ -134,7 +135,7 @@ past_performance, win_probability (integer), executive_summary (2 sentences max)
         )
         proposal_data = json.loads(response.text)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Gemini proposal generation error: {str(e)}")
+        raise fail(502, "Proposal generation failed", e)
 
     conn = get_db_connection()
     cur = conn.cursor()

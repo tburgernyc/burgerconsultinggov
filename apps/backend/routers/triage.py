@@ -1,16 +1,13 @@
-import asyncio
 import json
 import os
-import requests
-import tempfile
 
 from fastapi import APIRouter, Depends, HTTPException
 
 from auth import _require_admin
 from db import get_db_connection
-from gemini import client, types
-from helpers import TRIAGE_SYSTEM_INSTRUCTION, _call_gemini_triage, _auto_dispatch_rfq
+from helpers import _call_gemini_triage, _validate_triage_shape, fetch_pdf_to_temp
 from models import TriageReport, TriageRequest
+from obs import audit, fail
 
 router = APIRouter()
 
@@ -38,21 +35,48 @@ async def get_triage_queue(_: None = Depends(_require_admin)):
 
 @router.post("/api/triage/analyze", response_model=TriageReport)
 async def analyze_solicitation(request: TriageRequest, _: None = Depends(_require_admin)):
-    """Manual triage trigger — downloads PDF, runs Gemini, upserts result."""
+    """Manual triage trigger — downloads PDF (SSRF-guarded), runs Gemini, upserts result.
+
+    The LLM score is advisory only. There is no automated outbound dispatch here;
+    RFQ emails are sent exclusively via the admin-gated /api/sourcing/approve path
+    (ENTERPRISE_AUDIT P0-1)."""
     temp_pdf_path = None
     try:
-        pdf_response = requests.get(request.pdf_url, stream=True, timeout=30)
-        pdf_response.raise_for_status()
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_pdf:
-            for chunk in pdf_response.iter_content(chunk_size=8192):
-                temp_pdf.write(chunk)
-            temp_pdf_path = temp_pdf.name
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"PDF download failed: {str(e)}")
+        try:
+            temp_pdf_path = fetch_pdf_to_temp(request.pdf_url)
+        except ValueError as e:
+            # Policy violation (SSRF/size/type) — safe to surface the reason.
+            raise HTTPException(status_code=400, detail=f"PDF rejected: {e}")
+        except Exception as e:
+            raise fail(400, "PDF download failed", e)
 
-    try:
-        data = await _call_gemini_triage(temp_pdf_path, request.solicitation_id)
-        score = data.get("section4_adjudication", {}).get("feasibility_score", 1)
+        try:
+            data = await _call_gemini_triage(temp_pdf_path, request.solicitation_id)
+        except Exception as e:
+            raise fail(502, "Triage model call failed", e)
+
+        score = _validate_triage_shape(data)
+        if score is None:
+            # Fail closed: malformed/anomalous output never advances the pipeline.
+            conn = get_db_connection()
+            cur = conn.cursor()
+            cur.execute("""
+                INSERT INTO solicitation_queue
+                    (solicitation_id, phase_status, status, reason_code, pdf_url, raw_json)
+                VALUES (%s, 'PENDING_TRIAGE', NULL, 'TRIAGE_SHAPE_ANOMALY', %s, %s)
+                ON CONFLICT (solicitation_id) DO UPDATE SET
+                    phase_status='PENDING_TRIAGE', status=NULL,
+                    reason_code='TRIAGE_SHAPE_ANOMALY',
+                    raw_json=EXCLUDED.raw_json, updated_at=NOW()
+            """, (request.solicitation_id, request.pdf_url,
+                  json.dumps(data) if isinstance(data, dict) else None))
+            conn.commit()
+            cur.close()
+            conn.close()
+            audit("triage.shape_anomaly", actor="admin", target=request.solicitation_id)
+            raise HTTPException(status_code=422,
+                                detail="Triage output failed validation; parked for human review.")
+
         status = "READY_FOR_SOURCING" if score >= 8 else "REJECTED"
 
         conn = get_db_connection()
@@ -76,14 +100,13 @@ async def analyze_solicitation(request: TriageRequest, _: None = Depends(_requir
         cur.close()
         conn.close()
 
-        if score >= 9:
-            asyncio.create_task(_auto_dispatch_rfq(request.solicitation_id))
-
+        audit("triage.complete", actor="admin", target=request.solicitation_id,
+              detail={"score": score, "status": status})
         return data
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Gemini processing error: {str(e)}")
+        raise fail(500, "Triage processing error", e)
     finally:
         if temp_pdf_path and os.path.exists(temp_pdf_path):
             os.remove(temp_pdf_path)

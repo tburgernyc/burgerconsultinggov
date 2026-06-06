@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from auth import _require_admin, _require_gateway
 from db import get_db_connection
 from helpers import _dispatch_vendors, _VENDOR_CAPACITY_QUERY, dispatch_guard
+from obs import audit
 
 router = APIRouter()
 
@@ -90,6 +91,8 @@ async def approve_rfq(rfq_id: str, _: None = Depends(_require_admin)):
     deadline_str = deadline.strftime("%B %d, %Y %I:%M %p ET") if deadline else None
     dispatched, skipped_capacity = _dispatch_vendors(vendors, rfq_id, agency, naics, deadline_str, pdf_url)
 
+    audit("sourcing.dispatch", actor="admin", target=rfq_id,
+          detail={"dispatched": dispatched, "skipped_capacity": skipped_capacity})
     return {
         "status": "approved",
         "solicitation_id": rfq_id,

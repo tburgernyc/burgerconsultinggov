@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from auth import _require_admin, _require_gateway
 from db import get_db_connection
 from emails import email_payment_confirmed
+from obs import audit, fail
 from gemini import client, types
 from models import (
     AgreementSignRequest,
@@ -75,12 +76,14 @@ async def award_contract(request: ContractAwardRequest, _: None = Depends(_requi
         conn.commit()
         cur.close()
         conn.close()
+        audit("contract.award", actor="admin", target=str(contract_id),
+              detail={"solicitation_id": request.solicitation_id})
         return {"status": "awarded", "contract_id": str(contract_id)}
     except Exception as e:
         conn.rollback()
         cur.close()
         conn.close()
-        raise HTTPException(status_code=400, detail=str(e))
+        raise fail(400, "Could not award contract", e)
 
 
 @router.post("/api/contracts/{contract_id}/invoice")
@@ -278,7 +281,7 @@ Return only the agreement text, no commentary."""
     except Exception as e:
         cur.close()
         conn.close()
-        raise HTTPException(status_code=500, detail=f"Agreement generation failed: {str(e)}")
+        raise fail(502, "Agreement generation failed", e)
 
     cur.execute("""
         UPDATE active_contracts

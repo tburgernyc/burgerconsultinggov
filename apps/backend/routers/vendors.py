@@ -10,6 +10,7 @@ from pydantic import BaseModel
 
 from auth import _require_admin, _require_vendor, _pwd_context
 from db import get_db_connection
+from obs import audit, fail
 from emails import (
     email_vendor_onboarding_received,
     email_admin_new_vendor_application,
@@ -156,7 +157,7 @@ async def register_vendor(request: VendorRegisterRequest):
         conn.rollback()
         cur.close()
         conn.close()
-        raise HTTPException(status_code=400, detail=str(e))
+        raise fail(400, "Registration could not be completed", e)
 
 
 @router.get("/api/vendors")
@@ -326,6 +327,18 @@ async def serve_vendor_doc_admin(vendor_id: str, doc_id: str,
 _UPLOAD_ROOT = pathlib.Path("/app/uploads/vendor_docs")
 _ALLOWED_EXTENSIONS = {".pdf", ".jpg", ".jpeg", ".png"}
 _ALLOWED_DOC_TYPES = {"INSURANCE", "W9", "LICENSE", "SAM"}
+_MAX_UPLOAD_BYTES = 10 * 1024 * 1024  # app-side cap (P2-1); nginx caps at 10m too
+_MAGIC_BYTES = (
+    (b"%PDF-", ".pdf"),
+    (b"\xff\xd8\xff", ".jpg"),
+    (b"\x89PNG\r\n\x1a\n", ".png"),
+)
+
+
+def _sniff_filetype(head: bytes) -> bool:
+    """True if the leading bytes match an allowed file type — defends against a
+    benign extension wrapping disallowed content (P2-1)."""
+    return any(head.startswith(magic) for magic, _ in _MAGIC_BYTES)
 
 
 @router.get("/api/vendor-docs")
@@ -361,12 +374,17 @@ async def upload_vendor_doc_self(
     if suffix not in _ALLOWED_EXTENSIONS:
         raise HTTPException(status_code=400, detail="Only PDF, JPG, and PNG files are accepted")
 
+    # Stream with a hard size cap so a huge upload can't exhaust memory/disk (P2-1).
+    contents = await file.read(_MAX_UPLOAD_BYTES + 1)
+    if len(contents) > _MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="File exceeds the 10 MB limit")
+    if not _sniff_filetype(contents):
+        raise HTTPException(status_code=400, detail="File content is not a valid PDF, JPG, or PNG")
+
     dest_dir = _UPLOAD_ROOT / vendor_id
     dest_dir.mkdir(parents=True, exist_ok=True)
     safe_name = f"{doc_type}_{int(time.time())}{suffix}"
     dest_path = dest_dir / safe_name
-
-    contents = await file.read()
     dest_path.write_bytes(contents)
 
     conn = get_db_connection()
@@ -432,11 +450,29 @@ class _PasswordChangeRequest(BaseModel):
     new_password: str
 
 
+def _validate_password_strength(pw: str) -> None:
+    """P2-2: min length 12 + basic complexity. Raises 400 on a weak password."""
+    if len(pw) < 12:
+        raise HTTPException(status_code=400, detail="Password must be at least 12 characters")
+    classes = sum([
+        any(c.islower() for c in pw),
+        any(c.isupper() for c in pw),
+        any(c.isdigit() for c in pw),
+        any(not c.isalnum() for c in pw),
+    ])
+    if classes < 3:
+        raise HTTPException(
+            status_code=400,
+            detail="Password must include at least 3 of: lowercase, uppercase, digit, symbol",
+        )
+
+
 @router.put("/api/vendor-password")
 async def change_vendor_password(request: _PasswordChangeRequest,
                                   vendor_id: str = Depends(_require_vendor)):
-    if len(request.new_password) < 8:
-        raise HTTPException(status_code=400, detail="New password must be at least 8 characters")
+    _validate_password_strength(request.new_password)
+    if request.new_password == request.current_password:
+        raise HTTPException(status_code=400, detail="New password must differ from the current password")
 
     conn = get_db_connection()
     cur = conn.cursor()
@@ -460,4 +496,5 @@ async def change_vendor_password(request: _PasswordChangeRequest,
     conn.commit()
     cur.close()
     conn.close()
+    audit("vendor.password_change", actor=vendor_id, target=vendor_id)
     return {"status": "password_updated"}

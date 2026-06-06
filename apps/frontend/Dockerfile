@@ -3,6 +3,9 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci
 COPY . .
+# Build and run as the unprivileged built-in `node` user (P3-3).
+RUN chown -R node:node /app
+USER node
 ARG NEXT_PUBLIC_API_URL
 ARG NEXT_PUBLIC_COMPANY_NAME
 ARG NEXT_PUBLIC_COMPANY_EIN

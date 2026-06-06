@@ -95,8 +95,14 @@ export default function ProfilePage() {
     if (pwForm.next !== pwForm.confirm) {
       setPwMsg({ ok: false, text: 'New passwords do not match.' }); return;
     }
-    if (pwForm.next.length < 8) {
-      setPwMsg({ ok: false, text: 'New password must be at least 8 characters.' }); return;
+    if (pwForm.next.length < 12) {
+      setPwMsg({ ok: false, text: 'New password must be at least 12 characters.' }); return;
+    }
+    {
+      const classes = [/[a-z]/, /[A-Z]/, /[0-9]/, /[^A-Za-z0-9]/].filter(re => re.test(pwForm.next)).length;
+      if (classes < 3) {
+        setPwMsg({ ok: false, text: 'Use at least 3 of: lowercase, uppercase, digit, symbol.' }); return;
+      }
     }
     setPwSaving(true); setPwMsg(null);
     try {

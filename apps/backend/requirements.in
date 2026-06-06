@@ -1,0 +1,15 @@
+# Top-level dependencies (source of truth). Compile to pinned requirements.txt with:
+#   pip-compile requirements.in   (or: uv pip compile requirements.in -o requirements.txt)
+fastapi
+uvicorn[standard]
+pydantic
+psycopg2-binary
+requests
+google-genai
+python-dotenv
+httpx
+resend
+apscheduler>=3.10.0
+passlib[bcrypt]
+python-docx
+python-multipart
