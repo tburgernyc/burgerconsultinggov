@@ -16,7 +16,8 @@ from cron import (
     cron_sam_scan,
     cron_usaspending_intelligence,
 )
-from db import MIGRATIONS_SQL, SCHEMA_SQL, _init_pool, _pool
+from auth import _pwd_context
+from db import MIGRATIONS_SQL, SCHEMA_SQL, SCHEMA_VERSION, _init_pool, _pool
 from routers import (
     admin,
     contracts,
@@ -33,6 +34,31 @@ from routers import (
 )
 
 
+def _bootstrap_admin(cur, conn) -> None:
+    """Seed the admin credential into admin_users as a bcrypt hash if absent (P1-3).
+
+    ADMIN_PASSWORD is a one-time bootstrap secret: it is hashed into the DB on first
+    boot and should then be removed from the environment. We never store it plaintext
+    and the login path compares against the hash, not the env var."""
+    admin_email = os.getenv("ADMIN_EMAIL", "procurement@burgergov.com")
+    bootstrap_pw = os.getenv("ADMIN_PASSWORD", "")
+    cur.execute("SELECT 1 FROM admin_users WHERE email=%s", (admin_email,))
+    if cur.fetchone():
+        return
+    if not bootstrap_pw:
+        print(f"[ADMIN] No admin row for {admin_email} and ADMIN_PASSWORD unset — "
+              f"set ADMIN_PASSWORD once to seed the hashed credential.")
+        return
+    cur.execute(
+        "INSERT INTO admin_users (email, name, password_hash) VALUES (%s, %s, %s) "
+        "ON CONFLICT (email) DO NOTHING",
+        (admin_email, "Timothy J. Burger", _pwd_context.hash(bootstrap_pw)),
+    )
+    conn.commit()
+    print(f"[ADMIN] Seeded hashed admin credential for {admin_email}. "
+          f"You may now remove ADMIN_PASSWORD from the environment.")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     _init_pool()
@@ -45,25 +71,31 @@ async def lifespan(app: FastAPI):
             port=5432,
         )
         cur = conn.cursor()
-        for statement in SCHEMA_SQL.strip().split(';'):
-            stmt = statement.strip()
-            if stmt:
+        # Fail-loud, idempotent bootstrap (P2-7). Every statement is IF NOT EXISTS /
+        # ADD COLUMN IF NOT EXISTS, so a real error means a genuine schema problem and
+        # must abort startup rather than be silently swallowed.
+        for label, block in (("SCHEMA", SCHEMA_SQL), ("MIGRATIONS", MIGRATIONS_SQL)):
+            for statement in block.strip().split(';'):
+                stmt = statement.strip()
+                if not stmt:
+                    continue
                 try:
                     cur.execute(stmt)
-                except Exception:
+                    conn.commit()
+                except Exception as exc:
                     conn.rollback()
-        for statement in MIGRATIONS_SQL.strip().split(';'):
-            stmt = statement.strip()
-            if stmt:
-                try:
-                    cur.execute(stmt)
-                except Exception:
-                    conn.rollback()
+                    raise RuntimeError(f"{label} migration failed: {exc}\nStatement: {stmt[:200]}") from exc
+        cur.execute(
+            "INSERT INTO schema_version (version) VALUES (%s) ON CONFLICT (version) DO NOTHING",
+            (SCHEMA_VERSION,),
+        )
         conn.commit()
+        _bootstrap_admin(cur, conn)
         cur.close()
         conn.close()
     except Exception as e:
-        print(f"DB init error: {e}")
+        # Abort startup: a half-migrated DB is more dangerous than a down service.
+        raise RuntimeError(f"DB init failed: {e}") from e
 
     scheduler = AsyncIOScheduler(timezone="America/New_York")
     scheduler.add_job(cron_sam_scan, CronTrigger(hour="7,11,15,19", minute=0))
@@ -88,7 +120,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=["https://www.burgergov.com", "https://burgergov.com"],
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["*"],
+    # Narrowed from "*" to the headers the proxies actually send (P4-2).
+    allow_headers=["Content-Type", "X-Admin-Token", "X-Gateway-Token", "X-Vendor-Token"],
 )
 
 for _router in [

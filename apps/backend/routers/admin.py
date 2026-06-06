@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from auth import _require_admin, _pwd_context
 from db import get_db_connection
 from emails import email_vendor_portal_access_granted
+from obs import audit
 
 router = APIRouter()
 
@@ -173,6 +174,7 @@ async def approve_vendor(vendor_id: str, _: None = Depends(_require_admin)):
     if not row:
         raise HTTPException(status_code=404, detail="Vendor not found")
     email_vendor_portal_access_granted(row[0], row[1], temp_password)
+    audit("vendor.approve", actor="admin", target=vendor_id, detail={"email": row[0]})
     return {"status": "approved", "vendor_id": vendor_id,
             "email": row[0], "legal_name": row[1],
             "note": "Portal access granted. Credentials email dispatched."}

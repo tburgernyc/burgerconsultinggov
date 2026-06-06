@@ -3,9 +3,10 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from auth import _require_admin
+from auth import _require_admin, _require_gateway
 from db import get_db_connection
 from emails import email_payment_confirmed
+from obs import audit, fail
 from gemini import client, types
 from models import (
     AgreementSignRequest,
@@ -19,7 +20,7 @@ router = APIRouter()
 
 
 @router.get("/api/contracts/active")
-async def get_active_contracts():
+async def get_active_contracts(_: None = Depends(_require_gateway)):
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute("""
@@ -75,12 +76,14 @@ async def award_contract(request: ContractAwardRequest, _: None = Depends(_requi
         conn.commit()
         cur.close()
         conn.close()
+        audit("contract.award", actor="admin", target=str(contract_id),
+              detail={"solicitation_id": request.solicitation_id})
         return {"status": "awarded", "contract_id": str(contract_id)}
     except Exception as e:
         conn.rollback()
         cur.close()
         conn.close()
-        raise HTTPException(status_code=400, detail=str(e))
+        raise fail(400, "Could not award contract", e)
 
 
 @router.post("/api/contracts/{contract_id}/invoice")
@@ -136,7 +139,7 @@ async def record_payment(contract_id: str, request: PaymentUpdateRequest,
 
 
 @router.get("/api/contracts/{contract_id}/milestones")
-async def get_milestones(contract_id: str):
+async def get_milestones(contract_id: str, _: None = Depends(_require_gateway)):
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute("""
@@ -278,7 +281,7 @@ Return only the agreement text, no commentary."""
     except Exception as e:
         cur.close()
         conn.close()
-        raise HTTPException(status_code=500, detail=f"Agreement generation failed: {str(e)}")
+        raise fail(502, "Agreement generation failed", e)
 
     cur.execute("""
         UPDATE active_contracts
@@ -293,7 +296,7 @@ Return only the agreement text, no commentary."""
 
 
 @router.get("/api/contracts/{contract_id}/agreement")
-async def get_agreement(contract_id: str):
+async def get_agreement(contract_id: str, _: None = Depends(_require_gateway)):
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute("""
@@ -318,7 +321,8 @@ async def get_agreement(contract_id: str):
 
 
 @router.post("/api/contracts/{contract_id}/agreement/sign")
-async def sign_agreement(contract_id: str, request: AgreementSignRequest):
+async def sign_agreement(contract_id: str, request: AgreementSignRequest,
+                         _: None = Depends(_require_gateway)):
     if not request.signed_by or len(request.signed_by.strip()) < 2:
         raise HTTPException(status_code=400, detail="Full name required to sign")
     conn = get_db_connection()

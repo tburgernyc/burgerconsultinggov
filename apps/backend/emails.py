@@ -1,5 +1,13 @@
+import html
 import os
 import resend
+
+
+def _e(value) -> str:
+    """HTML-escape any user/AI/feed-supplied value before it enters an email body
+    (ENTERPRISE_AUDIT P1-6). Subjects are plaintext and are left unescaped."""
+    return html.escape(str(value if value is not None else ""))
+
 
 resend.api_key = os.getenv("RESEND_API_KEY", "")
 _FROM = "Burger Consulting LLC <procurement@burgergov.com>"
@@ -35,10 +43,10 @@ def _wrap(body: str) -> str:
 def email_vendor_onboarding_received(to: str, legal_name: str, contact_name: str) -> None:
     body = (
         '<h2 style="color:#0a1628;margin:0 0 16px;font-size:20px">Application Received</h2>'
-        f'<p>Hello {contact_name},</p>'
-        f'<p>Thank you — your vendor partnership application for <strong>{legal_name}</strong> has been received.</p>'
+        f'<p>Hello {_e(contact_name)},</p>'
+        f'<p>Thank you — your vendor partnership application for <strong>{_e(legal_name)}</strong> has been received.</p>'
         '<table style="background:#f4f6fa;border-radius:6px;padding:16px;width:100%;border-collapse:collapse;margin:16px 0">'
-        f'<tr><td style="padding:6px 0;color:#6b7a99;font-size:13px">Business Name</td><td style="padding:6px 0;font-weight:600">{legal_name}</td></tr>'
+        f'<tr><td style="padding:6px 0;color:#6b7a99;font-size:13px">Business Name</td><td style="padding:6px 0;font-weight:600">{_e(legal_name)}</td></tr>'
         '<tr><td style="padding:6px 0;color:#6b7a99;font-size:13px">Status</td><td style="padding:6px 0">'
         '<span style="background:#fef9c3;color:#854d0e;padding:2px 8px;border-radius:4px;font-size:12px;font-weight:600">PENDING REVIEW</span>'
         '</td></tr></table>'
@@ -52,7 +60,7 @@ def email_vendor_portal_access_granted(to: str, legal_name: str, temp_password: 
     login_url = f"{_PORTAL_URL}/portal"
     body = (
         '<h2 style="color:#0a1628;margin:0 0 16px;font-size:20px">Portal Access Approved</h2>'
-        f'<p>Your vendor partnership application for <strong>{legal_name}</strong> has been approved.</p>'
+        f'<p>Your vendor partnership application for <strong>{_e(legal_name)}</strong> has been approved.</p>'
         '<div style="background:#f0fdf4;border:1px solid #86efac;border-radius:6px;padding:16px;margin:16px 0">'
         '<div style="font-weight:700;color:#166534;margin-bottom:8px">&#10003; Access Granted</div>'
         '<p style="margin:0;font-size:14px">You can now log in to view open RFQs, submit quotes, manage documents, and track payments.</p>'
@@ -73,12 +81,12 @@ def email_rfq_dispatch(to: str, vendor_name: str, sol_id: str, agency: str,
     deadline_display = deadline or "See portal"
     body = (
         '<h2 style="color:#0a1628;margin:0 0 16px;font-size:20px">Quote Requested</h2>'
-        f'<p>Hello {vendor_name},</p>'
+        f'<p>Hello {_e(vendor_name)},</p>'
         '<p>Burger Consulting LLC is requesting a quote for the following federal solicitation. Submit before the deadline to be considered.</p>'
         '<table style="width:100%;border-collapse:collapse;margin:16px 0">'
         f'<tr style="background:#f4f6fa"><td style="padding:10px 12px;color:#6b7a99;font-size:13px;width:40%">Solicitation #</td><td style="padding:10px 12px;font-weight:700">{sol_id}</td></tr>'
-        f'<tr><td style="padding:10px 12px;color:#6b7a99;font-size:13px">Agency</td><td style="padding:10px 12px">{agency or "See portal"}</td></tr>'
-        f'<tr style="background:#f4f6fa"><td style="padding:10px 12px;color:#6b7a99;font-size:13px">NAICS Code</td><td style="padding:10px 12px">{naics or "See portal"}</td></tr>'
+        f'<tr><td style="padding:10px 12px;color:#6b7a99;font-size:13px">Agency</td><td style="padding:10px 12px">{_e(agency) or "See portal"}</td></tr>'
+        f'<tr style="background:#f4f6fa"><td style="padding:10px 12px;color:#6b7a99;font-size:13px">NAICS Code</td><td style="padding:10px 12px">{_e(naics) or "See portal"}</td></tr>'
         f'<tr><td style="padding:10px 12px;color:#6b7a99;font-size:13px">Response Deadline</td><td style="padding:10px 12px;font-weight:700;color:#dc2626">{deadline_display}</td></tr>'
         '</table>'
         '<p style="font-size:13px;color:#6b7a99">This RFQ is subject to Pay-When-Paid terms. Payment issued within 30 days of agency receipt.</p>'
@@ -100,7 +108,7 @@ def email_insurance_expiry_warning(to: str, legal_name: str, days_left: int, exp
     )
     body = (
         f'<h2 style="color:{color};margin:0 0 16px;font-size:20px">{prefix}Insurance Certificate Expiring in {days_left} Day{"s" if days_left != 1 else ""}</h2>'
-        f'<p>Hello {legal_name},</p>'
+        f'<p>Hello {_e(legal_name)},</p>'
         f'<div style="background:{bg};border:1px solid {border};border-radius:6px;padding:16px;margin:16px 0">'
         f'<p style="margin:0;color:{color};font-weight:600">Your General Liability Insurance Certificate expires on <strong>{expiry_date}</strong>.</p>'
         f'{suspension_note}</div>'
@@ -117,7 +125,7 @@ def email_payment_confirmed(to: str, vendor_name: str, contract_number: str,
     portal_link = f"{_PORTAL_URL}/portal/invoices"
     body = (
         '<h2 style="color:#0a1628;margin:0 0 16px;font-size:20px">Payment Confirmed</h2>'
-        f'<p>Hello {vendor_name},</p>'
+        f'<p>Hello {_e(vendor_name)},</p>'
         '<p>Agency payment has been received. Your subcontractor payment will be issued on or before the date below.</p>'
         '<table style="width:100%;border-collapse:collapse;margin:16px 0">'
         f'<tr style="background:#f4f6fa"><td style="padding:10px 12px;color:#6b7a99;font-size:13px;width:40%">Contract Number</td><td style="padding:10px 12px;font-weight:700">{contract_number}</td></tr>'
@@ -141,7 +149,7 @@ def email_deadline_alert(to: str, sol_id: str, agency: str, deadline_str: str, h
         '<p>A solicitation in your pipeline is approaching its response deadline.</p>'
         '<table style="width:100%;border-collapse:collapse;margin:16px 0">'
         f'<tr style="background:#f4f6fa"><td style="padding:10px 12px;color:#6b7a99;font-size:13px;width:40%">Solicitation #</td><td style="padding:10px 12px;font-weight:700">{sol_id}</td></tr>'
-        f'<tr><td style="padding:10px 12px;color:#6b7a99;font-size:13px">Agency</td><td style="padding:10px 12px">{agency or "—"}</td></tr>'
+        f'<tr><td style="padding:10px 12px;color:#6b7a99;font-size:13px">Agency</td><td style="padding:10px 12px">{_e(agency) or "—"}</td></tr>'
         f'<tr style="background:#f4f6fa"><td style="padding:10px 12px;color:#6b7a99;font-size:13px">Response Deadline</td><td style="padding:10px 12px;font-weight:700;color:{color}">{deadline_str}</td></tr>'
         '</table>'
         f'<div style="text-align:center;margin:24px 0"><a href="{admin_link}" style="background:#0a1628;color:#c9a84c;padding:12px 32px;border-radius:6px;text-decoration:none;font-weight:700;font-size:15px;display:inline-block">Review Solicitation</a></div>'
@@ -157,7 +165,7 @@ def email_ar_followup_sent(to: str, contract_number: str, agency: str,
         f'<p>An automated payment follow-up has been sent to the contracting officer for the invoice below.</p>'
         '<table style="width:100%;border-collapse:collapse;margin:16px 0">'
         f'<tr style="background:#f4f6fa"><td style="padding:10px 12px;color:#6b7a99;font-size:13px;width:40%">Contract #</td><td style="padding:10px 12px;font-weight:700">{contract_number}</td></tr>'
-        f'<tr><td style="padding:10px 12px;color:#6b7a99;font-size:13px">Agency</td><td style="padding:10px 12px">{agency or "—"}</td></tr>'
+        f'<tr><td style="padding:10px 12px;color:#6b7a99;font-size:13px">Agency</td><td style="padding:10px 12px">{_e(agency) or "—"}</td></tr>'
         f'<tr style="background:#f4f6fa"><td style="padding:10px 12px;color:#6b7a99;font-size:13px">Amount Outstanding</td><td style="padding:10px 12px;font-weight:700;color:#d97706">${invoice_amount:,.2f}</td></tr>'
         f'<tr><td style="padding:10px 12px;color:#6b7a99;font-size:13px">Days Outstanding</td><td style="padding:10px 12px;font-weight:700;color:#{"dc2626" if days_outstanding > 45 else "d97706"}">{days_outstanding} days</td></tr>'
         '</table>'
@@ -180,19 +188,19 @@ def email_outreach_initial(to: str, entity_name: str, sol_id: str, agency: str,
     ) if opt_out_url else ''
     body = (
         f'<h2 style="color:#1a2e4a;margin:0 0 8px;font-size:20px">Subcontract Quote Request</h2>'
-        f'<p style="margin:0 0 16px;color:#4b5563;font-size:14px">You are receiving this because your firm appears in the SAM.gov registry or USASpending.gov award history as a qualified provider for federal IT services work under <strong>NAICS {naics}</strong>.</p>'
+        f'<p style="margin:0 0 16px;color:#4b5563;font-size:14px">You are receiving this because your firm appears in the SAM.gov registry or USASpending.gov award history as a qualified provider for federal IT services work under <strong>NAICS {_e(naics)}</strong>.</p>'
         '<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:16px;margin:16px 0">'
         '<div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:#6b7a99;margin-bottom:10px">Solicitation Details</div>'
         '<table style="width:100%;border-collapse:collapse">'
         f'<tr><td style="padding:6px 0;color:#6b7a99;font-size:13px;width:40%">Solicitation ID</td><td style="padding:6px 0;font-weight:700;font-size:13px">{sol_id}</td></tr>'
-        f'<tr><td style="padding:6px 0;color:#6b7a99;font-size:13px">Issuing Agency</td><td style="padding:6px 0;font-size:13px">{agency or "Federal Agency"}</td></tr>'
-        f'<tr><td style="padding:6px 0;color:#6b7a99;font-size:13px">NAICS</td><td style="padding:6px 0;font-size:13px">{naics}</td></tr>'
+        f'<tr><td style="padding:6px 0;color:#6b7a99;font-size:13px">Issuing Agency</td><td style="padding:6px 0;font-size:13px">{_e(agency) or "Federal Agency"}</td></tr>'
+        f'<tr><td style="padding:6px 0;color:#6b7a99;font-size:13px">NAICS</td><td style="padding:6px 0;font-size:13px">{_e(naics)}</td></tr>'
         f'<tr><td style="padding:6px 0;color:#6b7a99;font-size:13px">Estimated Value</td><td style="padding:6px 0;font-weight:700;font-size:13px">{value_line}</td></tr>'
         f'<tr><td style="padding:6px 0;color:#6b7a99;font-size:13px">Quote Deadline</td><td style="padding:6px 0;font-weight:700;color:#d97706;font-size:13px">{deadline_str}</td></tr>'
         '</table></div>'
         '<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:14px;margin:16px 0">'
         '<div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:#92400e;margin-bottom:8px">Scope of Work Summary</div>'
-        f'<div style="font-size:13px;color:#1a2e4a;line-height:1.7;white-space:pre-line">{sow_brief}</div>'
+        f'<div style="font-size:13px;color:#1a2e4a;line-height:1.7;white-space:pre-line">{_e(sow_brief)}</div>'
         '</div>'
         '<p style="font-size:14px;margin:20px 0 8px;color:#1a2e4a"><strong>What we need from you:</strong></p>'
         '<ul style="margin:0 0 20px;padding-left:20px;font-size:13px;color:#4b5563;line-height:1.8">'
@@ -219,7 +227,7 @@ def email_outreach_followup1(to: str, entity_name: str, sol_id: str,
     ) if opt_out_url else ''
     body = (
         f'<h2 style="color:#1a2e4a;margin:0 0 8px;font-size:20px">Following Up — Quote Request for {sol_id}</h2>'
-        f'<p style="color:#4b5563;font-size:14px">We sent a subcontract quote request a few days ago for a federal IT services opportunity with <strong>{agency or "a federal agency"}</strong> (Solicitation <strong>{sol_id}</strong>) and wanted to follow up.</p>'
+        f'<p style="color:#4b5563;font-size:14px">We sent a subcontract quote request a few days ago for a federal IT services opportunity with <strong>{_e(agency) or "a federal agency"}</strong> (Solicitation <strong>{sol_id}</strong>) and wanted to follow up.</p>'
         f'<p style="color:#4b5563;font-size:14px">The quote deadline is <strong style="color:#d97706">{deadline_str}</strong>. If your firm has capacity and the scope is a fit, we would welcome your submission.</p>'
         f'<a href="{quote_url}" style="display:inline-block;background:#1a2e4a;color:#fff;padding:12px 28px;border-radius:6px;text-decoration:none;font-weight:700;font-size:14px;margin:20px 0">Submit Your Quote →</a>'
         '<p style="font-size:12px;color:#9ca3af">If you are not interested or this is not a fit, no action needed — you will receive one final reminder before the deadline.</p>'
@@ -239,7 +247,7 @@ def email_outreach_followup2(to: str, entity_name: str, sol_id: str,
     ) if opt_out_url else ''
     body = (
         f'<h2 style="color:#d97706;margin:0 0 8px;font-size:20px">Final Notice — Quote Deadline Approaching</h2>'
-        f'<p style="color:#4b5563;font-size:14px">This is the final outreach for the subcontract quote request on <strong>{sol_id}</strong> with <strong>{agency or "a federal agency"}</strong>.</p>'
+        f'<p style="color:#4b5563;font-size:14px">This is the final outreach for the subcontract quote request on <strong>{sol_id}</strong> with <strong>{_e(agency) or "a federal agency"}</strong>.</p>'
         f'<p style="color:#4b5563;font-size:14px">Quote deadline: <strong style="color:#dc2626">{deadline_str}</strong>. After this date we will finalize our team and this opportunity will close.</p>'
         f'<a href="{quote_url}" style="display:inline-block;background:#d97706;color:#fff;padding:12px 28px;border-radius:6px;text-decoration:none;font-weight:700;font-size:14px;margin:20px 0">Submit Quote Now →</a>'
         '<p style="font-size:12px;color:#9ca3af">After this email you will not receive further outreach on this solicitation. To be added to our standing vendor registry for future opportunities, visit burgergov.com/portal/register.</p>'
@@ -266,9 +274,9 @@ def email_admin_document_uploaded(to: str, legal_name: str, doc_type: str,
         '<h2 style="color:#0a1628;margin:0 0 16px;font-size:20px">Document Uploaded</h2>'
         f'<p>A vendor has uploaded a compliance document that may require review.</p>'
         '<table style="width:100%;border-collapse:collapse;margin:16px 0">'
-        f'<tr style="background:#f4f6fa"><td style="padding:10px 12px;color:#6b7a99;font-size:13px;width:40%">Vendor</td><td style="padding:10px 12px;font-weight:700">{legal_name}</td></tr>'
-        f'<tr><td style="padding:10px 12px;color:#6b7a99;font-size:13px">Document Type</td><td style="padding:10px 12px">{doc_labels.get(doc_type, doc_type)}</td></tr>'
-        f'<tr style="background:#f4f6fa"><td style="padding:10px 12px;color:#6b7a99;font-size:13px">Filename</td><td style="padding:10px 12px;font-family:monospace;font-size:13px">{filename}</td></tr>'
+        f'<tr style="background:#f4f6fa"><td style="padding:10px 12px;color:#6b7a99;font-size:13px;width:40%">Vendor</td><td style="padding:10px 12px;font-weight:700">{_e(legal_name)}</td></tr>'
+        f'<tr><td style="padding:10px 12px;color:#6b7a99;font-size:13px">Document Type</td><td style="padding:10px 12px">{_e(doc_labels.get(doc_type, doc_type))}</td></tr>'
+        f'<tr style="background:#f4f6fa"><td style="padding:10px 12px;color:#6b7a99;font-size:13px">Filename</td><td style="padding:10px 12px;font-family:monospace;font-size:13px">{_e(filename)}</td></tr>'
         f'{expiry_row}'
         '</table>'
         f'<div style="text-align:center;margin:24px 0"><a href="{vendor_url}" style="background:#0a1628;color:#c9a84c;padding:12px 32px;border-radius:6px;text-decoration:none;font-weight:700;font-size:15px;display:inline-block">View Vendor Registry →</a></div>'
@@ -283,9 +291,9 @@ def email_admin_new_vendor_application(to: str, legal_name: str,
         '<h2 style="color:#0a1628;margin:0 0 16px;font-size:20px">New Vendor Application</h2>'
         '<p>A new subcontractor has submitted a vendor partnership application and is awaiting your review.</p>'
         '<table style="width:100%;border-collapse:collapse;margin:16px 0">'
-        f'<tr style="background:#f4f6fa"><td style="padding:10px 12px;color:#6b7a99;font-size:13px;width:40%">Business Name</td><td style="padding:10px 12px;font-weight:700">{legal_name}</td></tr>'
-        f'<tr><td style="padding:10px 12px;color:#6b7a99;font-size:13px">Contact</td><td style="padding:10px 12px">{contact_name}</td></tr>'
-        f'<tr style="background:#f4f6fa"><td style="padding:10px 12px;color:#6b7a99;font-size:13px">Email</td><td style="padding:10px 12px">{vendor_email}</td></tr>'
+        f'<tr style="background:#f4f6fa"><td style="padding:10px 12px;color:#6b7a99;font-size:13px;width:40%">Business Name</td><td style="padding:10px 12px;font-weight:700">{_e(legal_name)}</td></tr>'
+        f'<tr><td style="padding:10px 12px;color:#6b7a99;font-size:13px">Contact</td><td style="padding:10px 12px">{_e(contact_name)}</td></tr>'
+        f'<tr style="background:#f4f6fa"><td style="padding:10px 12px;color:#6b7a99;font-size:13px">Email</td><td style="padding:10px 12px">{_e(vendor_email)}</td></tr>'
         '</table>'
         f'<div style="text-align:center;margin:24px 0"><a href="{approve_url}" style="background:#0a1628;color:#c9a84c;padding:12px 32px;border-radius:6px;text-decoration:none;font-weight:700;font-size:15px;display:inline-block">Review in Approval Queue →</a></div>'
     )

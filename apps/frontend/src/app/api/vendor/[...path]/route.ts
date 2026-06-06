@@ -1,4 +1,5 @@
 import { auth } from '@/lib/auth';
+import { adminToken, gatewayToken, isSameOrigin, mintVendorToken } from '@/lib/backend-auth';
 import { NextRequest, NextResponse } from 'next/server';
 
 const BACKEND = process.env.INTERNAL_API_URL || 'http://localhost:8000';
@@ -11,12 +12,18 @@ async function proxy(req: NextRequest, path: string[]): Promise<NextResponse> {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
+  // CSRF: reject cross-origin state-changing requests (P4-3).
+  if (req.method !== 'GET' && req.method !== 'HEAD' && !isSameOrigin(req)) {
+    return NextResponse.json({ error: 'Cross-origin request rejected' }, { status: 403 });
+  }
+
   const search = req.nextUrl.searchParams.toString();
   const url = `${BACKEND}/${path.join('/')}${search ? '?' + search : ''}`;
 
-  const headers: Record<string, string> = {};
-  if (user.id) headers['X-Vendor-Id'] = user.id;
-  if (user.role === 'admin') headers['X-Admin-Token'] = process.env.BACKEND_ADMIN_TOKEN || '';
+  const headers: Record<string, string> = { 'X-Gateway-Token': gatewayToken() };
+  // Bind the vendor identity with a signed, short-lived token rather than a raw header.
+  if (user.role === 'vendor' && user.id) headers['X-Vendor-Token'] = mintVendorToken(user.id);
+  if (user.role === 'admin') headers['X-Admin-Token'] = adminToken();
   const ct = req.headers.get('content-type');
   if (ct) headers['Content-Type'] = ct;
 

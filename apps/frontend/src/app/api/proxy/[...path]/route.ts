@@ -1,8 +1,8 @@
 import { auth } from '@/lib/auth';
+import { adminToken, gatewayToken, isSameOrigin } from '@/lib/backend-auth';
 import { NextRequest, NextResponse } from 'next/server';
 
 const BACKEND = process.env.INTERNAL_API_URL || 'http://localhost:8000';
-const ADMIN_TOKEN = process.env.BACKEND_ADMIN_TOKEN || '';
 
 async function proxy(req: NextRequest, path: string[]): Promise<NextResponse> {
   const session = await auth();
@@ -11,10 +11,15 @@ async function proxy(req: NextRequest, path: string[]): Promise<NextResponse> {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
+  // CSRF: reject cross-origin state-changing requests (P4-3).
+  if (req.method !== 'GET' && req.method !== 'HEAD' && !isSameOrigin(req)) {
+    return NextResponse.json({ error: 'Cross-origin request rejected' }, { status: 403 });
+  }
+
   const search = req.nextUrl.searchParams.toString();
   const url = `${BACKEND}/${path.join('/')}${search ? '?' + search : ''}`;
 
-  const headers: Record<string, string> = { 'X-Admin-Token': ADMIN_TOKEN };
+  const headers: Record<string, string> = { 'X-Admin-Token': adminToken(), 'X-Gateway-Token': gatewayToken() };
   const ct = req.headers.get('content-type');
   if (ct) headers['Content-Type'] = ct;
 

@@ -46,3 +46,7 @@ backups/
 upgrade.log
 watchdog.log
 *.log
+snap/
+
+# External cloned reference repo, not part of this project
+Anthropic-Cybersecurity-Skills/
