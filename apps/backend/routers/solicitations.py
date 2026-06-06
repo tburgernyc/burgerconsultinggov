@@ -1,12 +1,13 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
+from auth import _require_gateway
 from db import get_db_connection
 
 router = APIRouter()
 
 
 @router.get("/api/solicitations/list")
-async def list_solicitations():
+async def list_solicitations(_: None = Depends(_require_gateway)):
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute("""

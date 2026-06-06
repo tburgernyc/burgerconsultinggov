@@ -256,7 +256,7 @@ Keep it plain-text, factual, under 150 words. Start each bullet with a dash."""
                  contact_phone, naics_codes, city, state, business_types,
                  past_performance, qualification_score, status)
             VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'OUTREACH_SENT')
-            ON CONFLICT (uei) DO UPDATE SET
+            ON CONFLICT (uei) WHERE uei IS NOT NULL DO UPDATE SET
                 contact_email = EXCLUDED.contact_email,
                 qualification_score = EXCLUDED.qualification_score,
                 status = 'OUTREACH_SENT', updated_at = NOW()
@@ -383,9 +383,14 @@ async def submit_prospect_quote(token: str, request: ProspectQuoteRequest):
     conn = get_db_connection()
     cur = conn.cursor()
 
+    # Identity is resolved from the campaign-bound prospect record, NEVER from the
+    # request body. A public quote submission must not be able to claim, or overwrite,
+    # an arbitrary vendor identity by supplying someone else's email.
     cur.execute("""
-        SELECT oc.id, oc.prospect_id, oc.solicitation_id
+        SELECT oc.id, oc.prospect_id, oc.solicitation_id,
+               vp.entity_name, vp.contact_email, vp.contact_name
         FROM outreach_campaigns oc
+        JOIN vendor_prospects vp ON oc.prospect_id = vp.id
         WHERE oc.quote_token = %s::uuid
           AND oc.status NOT IN ('SUBMITTED', 'OPT_OUT', 'BOUNCED')
     """, (token,))
@@ -395,31 +400,53 @@ async def submit_prospect_quote(token: str, request: ProspectQuoteRequest):
         conn.close()
         raise HTTPException(status_code=404, detail="Quote link not found or already used")
 
-    campaign_id, prospect_id, sol_id = row
+    campaign_id, prospect_id, sol_id, prospect_name, prospect_email, prospect_contact = row
+    legal_name = prospect_name or request.vendor_name
 
-    cur.execute("""
-        INSERT INTO vendor_registry
-            (legal_name, contact_name, email, pay_when_paid_accepted,
-             tech_stack, onboarding_status, portal_access)
-        VALUES (%s, %s, %s, %s, %s, 'PROSPECT_QUOTE', false)
-        ON CONFLICT (email) DO UPDATE SET
-            legal_name = EXCLUDED.legal_name,
-            pay_when_paid_accepted = EXCLUDED.pay_when_paid_accepted,
-            tech_stack = EXCLUDED.tech_stack
-        RETURNING id
-    """, (
-        request.vendor_name, request.contact_name, request.contact_email,
-        request.pay_when_paid_accepted,
-        request.tech_stack or [],
-    ))
-    vendor_row = cur.fetchone()
-    vendor_id = vendor_row[0] if vendor_row else None
+    # Find any existing registry row for the prospect's (campaign-bound) email.
+    existing = None
+    if prospect_email:
+        cur.execute(
+            "SELECT id, portal_access, onboarding_status FROM vendor_registry WHERE email=%s",
+            (prospect_email,),
+        )
+        existing = cur.fetchone()
+
+    if existing:
+        vendor_id, portal_access, onboarding_status = existing
+        prospect_scoped = (not portal_access) and (onboarding_status in ("PROSPECT_QUOTE", "DISCOVERED"))
+        if prospect_scoped:
+            # Safe to refresh a row that is itself just a prospect placeholder. The
+            # guarded WHERE clause makes this a no-op against any vetted row, even if
+            # the status changed between the SELECT and here (TOCTOU-safe).
+            cur.execute("""
+                UPDATE vendor_registry
+                SET legal_name=%s, tech_stack=%s, pay_when_paid_accepted=%s
+                WHERE id=%s::uuid AND portal_access=false
+                  AND onboarding_status IN ('PROSPECT_QUOTE','DISCOVERED')
+            """, (legal_name, request.tech_stack or [], request.pay_when_paid_accepted, str(vendor_id)))
+        # else: a vetted / portal-enabled vendor responded — link the quote to them but
+        # never mutate their identity record from this unauthenticated path.
+    else:
+        # No registry row yet — create a prospect-scoped one bound to the prospect email.
+        cur.execute("""
+            INSERT INTO vendor_registry
+                (legal_name, contact_name, email, pay_when_paid_accepted,
+                 tech_stack, onboarding_status, portal_access)
+            VALUES (%s, %s, %s, %s, %s, 'PROSPECT_QUOTE', false)
+            RETURNING id
+        """, (
+            legal_name, prospect_contact or request.contact_name, prospect_email,
+            request.pay_when_paid_accepted, request.tech_stack or [],
+        ))
+        vendor_row = cur.fetchone()
+        vendor_id = vendor_row[0] if vendor_row else None
 
     if vendor_id:
         cur.execute("""
             INSERT INTO vendor_quotes
                 (solicitation_id, vendor_id, total_amount, period_of_performance,
-                 pay_when_paid_accepted, tech_stack, deliverables, notes)
+                 pay_when_paid_confirmed, tech_stack, deliverables, notes)
             VALUES (%s, %s::uuid, %s, %s, %s, %s, %s, %s)
         """, (
             sol_id, str(vendor_id), request.total_amount,

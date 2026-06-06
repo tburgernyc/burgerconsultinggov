@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { ADMIN_API } from '@/lib/api';
 
 type Solicitation = {
   solicitation_id: string;
@@ -10,16 +11,16 @@ type Solicitation = {
   created_at: string | null;
 };
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-
 export default function KanbanBoard() {
   const [solicitations, setSolicitations] = useState<Solicitation[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch(`${API_BASE}/api/solicitations/list`)
+    // Route through the authenticated admin proxy — /api/solicitations/list is no
+    // longer publicly reachable on the backend.
+    fetch(`${ADMIN_API}/api/solicitations/list`)
       .then((res) => res.json())
-      .then((data) => setSolicitations(data))
+      .then((data) => setSolicitations(Array.isArray(data) ? data : []))
       .finally(() => setLoading(false));
   }, []);
 

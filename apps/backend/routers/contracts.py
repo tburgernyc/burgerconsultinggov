@@ -3,7 +3,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from auth import _require_admin
+from auth import _require_admin, _require_gateway
 from db import get_db_connection
 from emails import email_payment_confirmed
 from gemini import client, types
@@ -19,7 +19,7 @@ router = APIRouter()
 
 
 @router.get("/api/contracts/active")
-async def get_active_contracts():
+async def get_active_contracts(_: None = Depends(_require_gateway)):
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute("""
@@ -136,7 +136,7 @@ async def record_payment(contract_id: str, request: PaymentUpdateRequest,
 
 
 @router.get("/api/contracts/{contract_id}/milestones")
-async def get_milestones(contract_id: str):
+async def get_milestones(contract_id: str, _: None = Depends(_require_gateway)):
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute("""
@@ -293,7 +293,7 @@ Return only the agreement text, no commentary."""
 
 
 @router.get("/api/contracts/{contract_id}/agreement")
-async def get_agreement(contract_id: str):
+async def get_agreement(contract_id: str, _: None = Depends(_require_gateway)):
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute("""
@@ -318,7 +318,8 @@ async def get_agreement(contract_id: str):
 
 
 @router.post("/api/contracts/{contract_id}/agreement/sign")
-async def sign_agreement(contract_id: str, request: AgreementSignRequest):
+async def sign_agreement(contract_id: str, request: AgreementSignRequest,
+                         _: None = Depends(_require_gateway)):
     if not request.signed_by or len(request.signed_by.strip()) < 2:
         raise HTTPException(status_code=400, detail="Full name required to sign")
     conn = get_db_connection()

@@ -81,7 +81,7 @@ DELIVERABLE TYPE: {deliverable_type}
 SECTION 508 REQUIRED: {section_508}
 ESTIMATED VALUE: ${float(est_value or 0):,.0f}
 RESPONSE DEADLINE: {deadline.strftime('%B %d, %Y') if deadline else 'TBD'}
-TARGET PRICE: ${target_price:,.2f if target_price else 'TBD'}
+TARGET PRICE: {f'${target_price:,.2f}' if target_price else 'TBD'}
 
 TRIAGE ANALYSIS SUMMARY:
 {triage_summary}
@@ -138,30 +138,42 @@ past_performance, win_probability (integer), executive_summary (2 sentences max)
 
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute("""
-        INSERT INTO proposals
-            (solicitation_id, gemini_draft, technical_approach, management_plan,
-             pricing_narrative, past_performance, win_probability, status)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, 'DRAFT')
-        ON CONFLICT (solicitation_id) DO UPDATE SET
-            gemini_draft = EXCLUDED.gemini_draft,
-            technical_approach = EXCLUDED.technical_approach,
-            management_plan = EXCLUDED.management_plan,
-            pricing_narrative = EXCLUDED.pricing_narrative,
-            past_performance = EXCLUDED.past_performance,
-            win_probability = EXCLUDED.win_probability,
-            updated_at = NOW()
-        RETURNING id
-    """, (
-        request.solicitation_id,
+    # proposals.solicitation_id has no unique constraint, so an upsert via
+    # ON CONFLICT is not available. Update the existing draft in place if one
+    # exists, otherwise insert a new row — one proposal per solicitation.
+    proposal_values = (
         response.text,
         proposal_data.get("technical_approach"),
         proposal_data.get("management_plan"),
         proposal_data.get("pricing_narrative"),
         proposal_data.get("past_performance"),
         proposal_data.get("win_probability"),
-    ))
-    proposal_id = cur.fetchone()[0]
+    )
+    cur.execute("""
+        UPDATE proposals SET
+            gemini_draft = %s,
+            technical_approach = %s,
+            management_plan = %s,
+            pricing_narrative = %s,
+            past_performance = %s,
+            win_probability = %s,
+            status = 'DRAFT',
+            updated_at = NOW()
+        WHERE solicitation_id = %s
+        RETURNING id
+    """, proposal_values + (request.solicitation_id,))
+    row = cur.fetchone()
+    if row:
+        proposal_id = row[0]
+    else:
+        cur.execute("""
+            INSERT INTO proposals
+                (solicitation_id, gemini_draft, technical_approach, management_plan,
+                 pricing_narrative, past_performance, win_probability, status)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, 'DRAFT')
+            RETURNING id
+        """, (request.solicitation_id,) + proposal_values)
+        proposal_id = cur.fetchone()[0]
 
     for section in boilerplate:
         cur.execute("""

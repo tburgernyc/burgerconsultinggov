@@ -17,9 +17,11 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         if (!credentials?.email || !credentials?.password) return null;
 
         const adminEmail = process.env.ADMIN_EMAIL || 'procurement@burgergov.com';
-        const adminSecret = process.env.ADMIN_PASSWORD || process.env.NEXTAUTH_SECRET || '';
+        // Must be an explicitly-configured password — never fall back to
+        // NEXTAUTH_SECRET (the JWT signing key is not a login credential).
+        const adminSecret = process.env.ADMIN_PASSWORD || '';
 
-        if (credentials.email === adminEmail && credentials.password === adminSecret) {
+        if (adminSecret && credentials.email === adminEmail && credentials.password === adminSecret) {
           return { id: 'admin', email: adminEmail, name: 'Timothy J. Burger', role: 'admin' };
         }
 

@@ -2,7 +2,7 @@ import json
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from auth import _require_admin
+from auth import _require_admin, _require_vendor
 from db import get_db_connection
 from gemini import client, types
 from models import QuoteSubmitRequest
@@ -11,7 +11,10 @@ router = APIRouter()
 
 
 @router.post("/api/quotes/submit")
-async def submit_quote(request: QuoteSubmitRequest):
+async def submit_quote(request: QuoteSubmitRequest,
+                       vendor_id: str = Depends(_require_vendor)):
+    # vendor_id comes from the authenticated session, never the request body —
+    # a vendor may only submit quotes as themselves.
     conn = get_db_connection()
     cur = conn.cursor()
     try:
@@ -23,7 +26,7 @@ async def submit_quote(request: QuoteSubmitRequest):
             VALUES (%s, %s::uuid, %s, %s, %s, %s, %s, %s, %s, 'PENDING_REVIEW')
             RETURNING id
         """, (
-            request.solicitation_id, request.vendor_id,
+            request.solicitation_id, vendor_id,
             json.dumps(request.line_items), request.total_amount,
             request.labor_rate_hourly, request.materials_cost,
             request.period_of_performance, request.pay_when_paid_confirmed,
