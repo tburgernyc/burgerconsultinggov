@@ -11,6 +11,8 @@ httpx==0.28.1
 resend==2.30.1
 apscheduler==3.11.2
 passlib[bcrypt]==1.7.4
-bcrypt==5.0.0
+# bcrypt must stay <4.1: passlib 1.7.4's backend self-test hashes a >72-byte
+# string, and bcrypt>=4.1 raises on that instead of truncating (DB init crash).
+bcrypt==4.0.1
 python-docx==1.2.0
 python-multipart==0.0.32
