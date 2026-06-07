@@ -1,11 +1,13 @@
 name: security
 
 # Security + quality gates (ENTERPRISE_AUDIT P3-2). Run on every PR and on pushes
-# to main so a regression can't merge silently.
+# to main so a regression can't merge silently. workflow_dispatch allows manual
+# re-runs (e.g. after a billing lock clears) without needing a new push.
 on:
   pull_request:
   push:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
