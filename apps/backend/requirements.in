@@ -11,5 +11,6 @@ httpx
 resend
 apscheduler>=3.10.0
 passlib[bcrypt]
+bcrypt<4.1  # passlib 1.7.4 incompatible with bcrypt>=4.1 (self-test crashes on >72 bytes)
 python-docx
 python-multipart
