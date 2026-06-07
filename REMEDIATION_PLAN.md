@@ -2,7 +2,7 @@
 
 **Companion to:** `ENTERPRISE_AUDIT.md`
 **Date:** 2026-06-06
-**Status:** Plan only — no application code changed yet.
+**Status:** All code-level items implemented and merged to `main`; 6 infra/ops items deferred to `OPS_CHECKLIST.md`. See the status table below.
 
 ---
 
