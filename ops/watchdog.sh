@@ -2,6 +2,8 @@
 LOG_DIR="/backups"
 ENV_FILE="/host-env/.env"
 NET="t_burgernyc_hermes_net"
+# Source the live DB password from .env — never hardcode it (rotated 2026-06-07).
+POSTGRES_PASSWORD="$(grep -E '^POSTGRES_PASSWORD=' "$ENV_FILE" | cut -d= -f2-)"
 
 log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"; }
 
@@ -28,7 +30,7 @@ if [ "$STATUS" != "running" ]; then
   docker run -d --name burger_frontend --network "$NET" \
     --restart unless-stopped \
     --env-file "$ENV_FILE" \
-    -e DATABASE_URL="postgresql://postgres:burger_secure_2026!@hermes_db:5432/postgres" \
+    -e DATABASE_URL="postgresql://postgres:${POSTGRES_PASSWORD}@hermes_db:5432/postgres" \
     -e NEXTAUTH_URL=https://www.burgergov.com \
     -e NEXT_PUBLIC_API_URL=https://www.burgergov.com \
     -e INTERNAL_API_URL=http://hermes_backend:8000 \

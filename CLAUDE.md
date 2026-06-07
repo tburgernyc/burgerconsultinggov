@@ -265,7 +265,7 @@ docker run -d \
   --network t_burgernyc_hermes_net \
   --restart unless-stopped \
   --env-file /home/t_burgernyc/.env \
-  -e DATABASE_URL="postgresql://postgres:burger_secure_2026!@hermes_db:5432/postgres" \
+  -e DATABASE_URL="postgresql://postgres:${POSTGRES_PASSWORD}@hermes_db:5432/postgres" \
   -e NEXTAUTH_URL=https://www.burgergov.com \
   -e NEXT_PUBLIC_API_URL=https://www.burgergov.com \
   -e INTERNAL_API_URL=http://hermes_backend:8000 \

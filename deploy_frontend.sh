@@ -7,6 +7,8 @@ set -euo pipefail
 NET="t_burgernyc_hermes_net"
 ENV_FILE="/home/t_burgernyc/.env"
 APP_DIR="/home/t_burgernyc/apps/frontend"
+# Source the live DB password from .env — never hardcode it (rotated 2026-06-07).
+POSTGRES_PASSWORD="$(grep -E '^POSTGRES_PASSWORD=' "$ENV_FILE" | cut -d= -f2-)"
 IMAGE="burger_frontend:latest"
 OLD="burger_frontend"
 NEW="burger_frontend_new"
@@ -20,7 +22,7 @@ docker build -t "$IMAGE" "$APP_DIR"
 echo "[deploy] Starting canary container..."
 docker run -d --name "$NEW" --network "$NET" \
   --env-file "$ENV_FILE" \
-  -e DATABASE_URL="postgresql://postgres:burger_secure_2026!@hermes_db:5432/postgres" \
+  -e DATABASE_URL="postgresql://postgres:${POSTGRES_PASSWORD}@hermes_db:5432/postgres" \
   -e NEXTAUTH_URL=https://www.burgergov.com \
   -e NEXT_PUBLIC_API_URL=https://www.burgergov.com \
   -e INTERNAL_API_URL=http://hermes_backend:8000 \

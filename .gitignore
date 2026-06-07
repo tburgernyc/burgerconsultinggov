@@ -53,3 +53,6 @@ Anthropic-Cybersecurity-Skills/
 
 # Local build-spec planning artifact — never commit (contained secrets)
 Master Build Prompt*.txt
+
+# Local .env backups (contain live secrets) — never commit
+.env.bak*

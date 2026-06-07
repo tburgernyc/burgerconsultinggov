@@ -82,7 +82,7 @@ Until the domain is verified, email errors are logged but do NOT break any API r
 
 | Variable | Status | Notes |
 |---|---|---|
-| `POSTGRES_PASSWORD` | ✅ Set | `burger_secure_2026!` |
+| `POSTGRES_PASSWORD` | ✅ Set | Stored in `.env` only — never in docs (rotated 2026-06-07) |
 | `GEMINI_API_KEY` | ✅ Set | Active |
 | `NEXTAUTH_SECRET` | ✅ Set | Active |
 | `RESEND_API_KEY` | ✅ Set | Active — domain verification needed |
@@ -107,7 +107,7 @@ docker stop hermes_backend && docker rm hermes_backend
 docker build -t t_burgernyc-backend:latest /home/t_burgernyc/apps/backend
 docker run -d --name hermes_backend --network burger_consulting_hermes_net \
   --restart unless-stopped --env-file /home/t_burgernyc/.env \
-  -e POSTGRES_PASSWORD=burger_secure_2026! -e DB_HOST=hermes_db \
+  -e POSTGRES_PASSWORD=${POSTGRES_PASSWORD} -e DB_HOST=hermes_db \
   -p 8000:8000 t_burgernyc-backend:latest
 
 # Frontend (after editing frontend code)
@@ -115,7 +115,7 @@ docker stop burger_frontend && docker rm burger_frontend
 docker build -t burger_frontend:latest /home/t_burgernyc/apps/frontend
 docker run -d --name burger_frontend --network burger_consulting_hermes_net \
   --restart unless-stopped --env-file /home/t_burgernyc/.env \
-  -e DATABASE_URL="postgresql://postgres:burger_secure_2026!@hermes_db:5432/postgres" \
+  -e DATABASE_URL="postgresql://postgres:${POSTGRES_PASSWORD}@hermes_db:5432/postgres" \
   -e NEXTAUTH_URL=http://localhost:3000 \
   -e NEXT_PUBLIC_API_URL=http://localhost:8000 \
   -p 3000:3000 burger_frontend:latest
