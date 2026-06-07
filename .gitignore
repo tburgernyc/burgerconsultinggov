@@ -50,3 +50,6 @@ snap/
 
 # External cloned reference repo, not part of this project
 Anthropic-Cybersecurity-Skills/
+
+# Local build-spec planning artifact — never commit (contained secrets)
+Master Build Prompt*.txt

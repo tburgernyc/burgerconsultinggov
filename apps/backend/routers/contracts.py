@@ -183,12 +183,13 @@ async def update_milestone(contract_id: str, milestone_id: str,
                             _: None = Depends(_require_admin)):
     conn = get_db_connection()
     cur = conn.cursor()
-    completed_at = "NOW()" if status == "COMPLETE" else "NULL"
-    cur.execute(f"""
+    cur.execute("""
         UPDATE contract_milestones
-        SET status=%s, completed_at={completed_at}, deliverable_url=COALESCE(%s, deliverable_url)
+        SET status=%s,
+            completed_at=CASE WHEN %s='COMPLETE' THEN NOW() ELSE NULL END,
+            deliverable_url=COALESCE(%s, deliverable_url)
         WHERE id=%s::uuid AND contract_id=%s::uuid
-    """, (status, deliverable_url, milestone_id, contract_id))
+    """, (status, status, deliverable_url, milestone_id, contract_id))
     conn.commit()
     cur.close()
     conn.close()
