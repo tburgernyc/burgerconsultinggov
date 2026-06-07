@@ -103,6 +103,9 @@ async def update_vendor_profile(request: VendorProfileUpdateRequest,
     values.append(vendor_id)
     conn = get_db_connection()
     cur = conn.cursor()
+    # Column fragments are hardcoded "col=%s" literals from the allowlist above;
+    # only values are interpolated, and those are parameterized. Not injectable.
+    # nosemgrep: python.sqlalchemy.security.sqlalchemy-execute-raw-query.sqlalchemy-execute-raw-query
     cur.execute(
         f"UPDATE vendor_registry SET {', '.join(updates)} WHERE id=%s::uuid RETURNING id",
         values,
@@ -232,6 +235,8 @@ async def update_vendor(vendor_id: str, request: VendorUpdateRequest,
     if not updates:
         return {"status": "no changes"}
     values.append(vendor_id)
+    # Hardcoded "col=%s" fragments from the allowlist; values parameterized. Not injectable.
+    # nosemgrep: python.sqlalchemy.security.sqlalchemy-execute-raw-query.sqlalchemy-execute-raw-query
     cur.execute(f"UPDATE vendor_registry SET {', '.join(updates)} WHERE id=%s::uuid", values)
     conn.commit()
     cur.close()
@@ -278,6 +283,8 @@ async def update_vendor_compliance(vendor_id: str, request: _ComplianceUpdateReq
     values.append(vendor_id)
     conn = get_db_connection()
     cur = conn.cursor()
+    # Hardcoded "col=%s" fragments from the allowlist; values parameterized. Not injectable.
+    # nosemgrep: python.sqlalchemy.security.sqlalchemy-execute-raw-query.sqlalchemy-execute-raw-query
     cur.execute(f"UPDATE vendor_registry SET {', '.join(updates)} WHERE id=%s::uuid RETURNING id",
                 values)
     if not cur.fetchone():

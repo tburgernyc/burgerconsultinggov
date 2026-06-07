@@ -1,0 +1,6 @@
+# gitleaks allowlist — one fingerprint (commit:file:rule:line) per line.
+#
+# GEMINI_API_KEY committed to the build-prompt artifact in a024cba. The key was
+# ROTATED on 2026-06-07 (the exposed value is dead) and the file has since been
+# removed from version control, so this historical hit is no longer a live leak.
+a024cba9fe03bd5ba9be0ece8df8365466ad9666:Master Build Prompt — Burger Consul.txt:gcp-api-key:567

@@ -7,6 +7,7 @@ const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
 // Fixed bcrypt hash used to keep failed-login timing uniform whether or not an
 // account exists, defeating user enumeration via response time (P2-3).
+// nosemgrep: generic.secrets.security.detected-bcrypt-hash.detected-bcrypt-hash -- intentional constant decoy hash, not a credential
 const DUMMY_HASH = '$2b$12$F.MBYp.svphyzIKYJJ5oTu6EbPMQl2xBrG.kOAYmJTfw6KK4t1Viy';
 const MAX_FAILS = 8;
 const LOCK_MINUTES = 15;
